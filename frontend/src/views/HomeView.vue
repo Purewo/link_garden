@@ -109,7 +109,7 @@ const cards = ref([])
 const tags = ref([])
 const keyword = ref('')
 const activeCategory = ref('default')
-const apiBase = `${window.location.protocol}//${window.location.hostname}:5001`
+const apiBase = `/api`
 
 const categories = [
   {
@@ -141,12 +141,16 @@ const categories = [
 const currentCategory = computed(() => categories.find(item => item.key === activeCategory.value) || { label: '技术类', icon: '🔊', bannerTitle: '技术发现', bannerDesc: '这一栏用来放真正值得回头再看的技术内容。' })
 
 onMounted(async () => {
-  const [cardsRes, tagsRes] = await Promise.all([
-    axios.get(`${apiBase}/api/cards`),
-    axios.get(`${apiBase}/api/tags`),
-  ])
-  cards.value = cardsRes.data
-  tags.value = tagsRes.data
+  try {
+    const [cardsRes, tagsRes] = await Promise.all([
+      axios.get(`${apiBase}/cards`),
+      axios.get(`${apiBase}/tags`),
+    ])
+    cards.value = cardsRes.data
+    tags.value = tagsRes.data
+  } catch (error) {
+    console.error('首页数据加载失败', error)
+  }
 })
 
 const localCount = computed(() => cards.value.filter(card => card.category === 'local').length)

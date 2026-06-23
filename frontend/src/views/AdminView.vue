@@ -87,7 +87,9 @@
                 <td>
                   <div class="table-actions">
                     <router-link :to="`/admin/publish?id=${row.id}`">编辑</router-link>
-                    <a href="#" @click.prevent="noopSearch">下架</a>
+                    <a href="#" @click.prevent="toggleArchive(row)">
+                      {{ row.archived ? '恢复' : '下架' }}
+                    </a>
                   </div>
                 </td>
               </tr>
@@ -106,13 +108,20 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 
-const apiBase = `${window.location.protocol}//${window.location.hostname}:5001`
+const apiBase = `/api`
 const rows = ref([])
 const filters = reactive({ keyword: '', kind: '', tag: '' })
 
 async function loadRows() {
-  const res = await axios.get(`${apiBase}/api/cards`)
+  const res = await axios.get(`${apiBase}/cards?include_archived=1`)
   rows.value = res.data
+}
+
+async function toggleArchive(row) {
+  await axios.patch(`${apiBase}/cards/${row.id}/archive`, {
+    archived: !row.archived
+  })
+  await loadRows()
 }
 
 onMounted(loadRows)

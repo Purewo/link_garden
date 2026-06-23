@@ -37,7 +37,7 @@ import { useRoute } from 'vue-router'
 const route = useRoute()
 const card = ref(null)
 const articleRef = ref(null)
-const apiBase = `${window.location.protocol}//${window.location.hostname}:5001`
+const apiBase = `/api`
 
 function decorateCodeBlocks() {
   const root = articleRef.value
@@ -100,7 +100,7 @@ async function applyHighlight() {
 }
 
 onMounted(async () => {
-  const res = await axios.get(`${apiBase}/api/cards/${route.params.id}`)
+  const res = await axios.get(`${apiBase}/cards/${route.params.id}`)
   card.value = res.data
   applyHighlight()
 })

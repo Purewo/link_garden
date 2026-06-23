@@ -85,7 +85,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 
-const apiBase = `${window.location.protocol}//${window.location.hostname}:5001`
+const apiBase = `/api`
 const router = useRouter()
 const route = useRoute()
 const isEdit = computed(() => !!route.query.id)
@@ -116,7 +116,7 @@ function resetForm() {
 
 async function loadForEdit() {
   if (!isEdit.value) return
-  const res = await axios.get(`${apiBase}/api/cards/${route.query.id}`)
+  const res = await axios.get(`${apiBase}/cards/${route.query.id}`)
   const card = res.data
   form.category = card.category || 'local'
   form.group = '技术类'
@@ -143,7 +143,7 @@ async function submitArticle() {
 
   try {
     const res = isEdit.value
-      ? await axios.put(`${apiBase}/api/cards/${route.query.id}`, payload)
+      ? await axios.put(`${apiBase}/cards/${route.query.id}`, payload)
       : await axios.post(`${apiBase}/api/publish`, payload)
     if (res.data?.ok) {
       router.push('/admin')

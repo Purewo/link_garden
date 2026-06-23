@@ -55,7 +55,11 @@ def health():
 
 @app.get('/api/cards')
 def get_cards():
-    return jsonify(load_cards())
+    include_archived = request.args.get('include_archived', '').lower() in {'1', 'true', 'yes'}
+    cards = load_cards()
+    if not include_archived:
+        cards = [card for card in cards if not card.get('archived', False)]
+    return jsonify(cards)
 
 
 @app.get('/api/cards/<card_id>')
@@ -107,6 +111,7 @@ def publish_article():
         'tags': tags,
         'cover': cover,
         'created_at': datetime.utcnow().strftime('%Y-%m-%d'),
+        'archived': False,
     }
 
     if category == 'external':
@@ -176,6 +181,22 @@ def update_article(card_id):
     return jsonify({'ok': True, 'card': card})
 
 
+@app.patch('/api/cards/<card_id>/archive')
+def archive_article(card_id):
+    data = request.get_json(silent=True) or {}
+    archived = data.get('archived', True)
+    cards = load_cards()
+    idx = next((i for i, c in enumerate(cards) if c['id'] == card_id), None)
+    if idx is None:
+        return jsonify({'ok': False, 'error': 'card not found'}), 404
+
+    card = cards[idx]
+    card['archived'] = bool(archived)
+    cards[idx] = card
+    save_cards(cards)
+    return jsonify({'ok': True, 'card': card})
+
+
 @app.delete('/api/cards/<card_id>')
 def delete_article(card_id):
     cards = load_cards()
@@ -189,3 +210,6 @@ def delete_article(card_id):
             md_path.unlink()
     save_cards(cards)
     return jsonify({'ok': True})
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=5001)

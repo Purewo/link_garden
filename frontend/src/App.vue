@@ -74,7 +74,7 @@ const isAdminRoute = computed(() => route.path.startsWith('/admin'))
 const isDetailRoute = computed(() => route.path.startsWith('/card/'))
 const showRocket = ref(false)
 
-const heroImage = 'http://gameuniverse.top:81/d/%E7%A7%BB%E5%8A%A8%E8%B5%84%E6%BA%90/%E4%B8%AA%E4%BA%BA%E4%BA%91/%E6%89%8B%E6%9C%BA%E5%9B%BE%E7%89%87/%E3%80%90%E5%93%B2%E9%A3%8E%E5%A3%81%E7%BA%B8%E3%80%91%E6%8F%92%E7%94%BB-%E6%97%A7_%E5%87%BA%E6%B0%B4%E8%8A%99%E8%93%89.png?sign=gIKB1VBkf9P2SCYMl0XC7Hbc36v-QqgC9t9sJvqw_Nc=:0'
+const heroImage = 'https://gameuniverse.top:81/d/%E7%A7%BB%E5%8A%A8%E8%B5%84%E6%BA%90/%E4%B8%AA%E4%BA%BA%E4%BA%91/%E6%89%8B%E6%9C%BA%E5%9B%BE%E7%89%87/%E3%80%90%E5%93%B2%E9%A3%8E%E5%A3%81%E7%BA%B8%E3%80%91%E6%8F%92%E7%94%BB-%E6%97%A7_%E5%87%BA%E6%B0%B4%E8%8A%99%E8%93%89.png?sign=gIKB1VBkf9P2SCYMl0XC7Hbc36v-QqgC9t9sJvqw_Nc=:0'
 
 const heroStyle = {
   backgroundImage: `linear-gradient(180deg, rgba(7,10,20,.34) 0%, rgba(7,10,20,.58) 56%, rgba(11,16,32,.92) 100%), url("${heroImage}")`,
