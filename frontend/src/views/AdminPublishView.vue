@@ -144,7 +144,7 @@ async function submitArticle() {
   try {
     const res = isEdit.value
       ? await axios.put(`${apiBase}/cards/${route.query.id}`, payload)
-      : await axios.post(`${apiBase}/api/publish`, payload)
+      : await axios.post(`${apiBase}/publish`, payload)
     if (res.data?.ok) {
       router.push('/admin')
     } else {

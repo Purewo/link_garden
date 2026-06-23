@@ -21,3 +21,7 @@ dist/
 # Env files
 .env
 .env.*
+
+# Local content / data — never commit. Production server is the source of truth.
+backend/data/cards.json
+backend/content/notes/
