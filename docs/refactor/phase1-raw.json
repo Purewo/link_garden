@@ -1,0 +1,756 @@
+{
+  "backendAudit": {
+    "data_shapes": [
+      {
+        "name": "Card (cards.json entry)",
+        "fields_and_types": "id: str (slug, primary key); title: str; category: str (\"external\" | \"local\"); summary: str; tags: list[str]; cover: str (URL or /covers/<id>.png path, may be \"\"); created_at: str (\"YYYY-MM-DD\", UTC); archived: bool (default false; sometimes omitted entirely on older entries — see entry index 3 in cards.json which has no `archived` key); url: str (only when category == \"external\"); markdown: str (only when category == \"local\"; relative path under backend/content/, e.g. \"notes/<id>.md\")",
+        "where_used": "backend/data/cards.json (entire file is List[Card]); load_cards/save_cards in backend/app.py; serialized as-is by GET /api/cards and GET /api/tags; built into a detail object by build_detail()",
+        "invariants": "id is unique within the list; id collisions on publish are resolved by appending -2, -3, ... ; category must be one of {external, local} on write paths but list-load does not enforce it; if category=='local', `markdown` should point to an existing file under backend/content/ (build_detail aborts 404 if missing); if category=='external', `url` should be present (validated only on POST/PUT, not on read); 'archived' is read with .get('archived', False) so missing key is treated as not archived"
+      },
+      {
+        "name": "Card detail (response of GET /api/cards/<id>)",
+        "fields_and_types": "All Card fields + (only when category=='local') content: str (raw markdown with leading `# H1` line stripped if present), content_html: str (rendered HTML via python-markdown with extensions fenced_code, tables)",
+        "where_used": "build_detail() in backend/app.py:36; returned by GET /api/cards/<card_id>",
+        "invariants": "content_html is generated each request (no caching); the H1-stripping only removes a single first line starting with '# ' before rendering; raw `content` field still contains the original H1 (only the variable used for HTML rendering is stripped); for external cards no content/content_html is added"
+      },
+      {
+        "name": "Publish request body (POST /api/publish)",
+        "fields_and_types": "category: str required (\"external\"|\"local\"); title: str required; summary: str optional; tags: list[str] optional (must be a list if provided); cover: str optional; id: str optional (used as slug seed if provided); url: str (required when category=='external'); content: str (required when category=='local', written verbatim to notes/<id>.md)",
+        "where_used": "publish_article() in backend/app.py:81-134",
+        "invariants": "category strictly validated against {external, local}; title required; tags must be a list when provided; url required for external; content required for local; new card is inserted at index 0 (newest first); created_at is set server-side from datetime.utcnow() formatted YYYY-MM-DD"
+      },
+      {
+        "name": "Update request body (PUT /api/cards/<id>)",
+        "fields_and_types": "title: str optional (falls back to existing); summary: str (always overwritten with stripped value, defaulting to ''); cover: str (always overwritten with stripped value, defaulting to ''); tags: list[str] optional; category: str optional (falls back to existing; must be external|local); url: str (required if final category is external); content: str (required if final category is local)",
+        "where_used": "update_article() in backend/app.py:137-181",
+        "invariants": "summary and cover are forcibly overwritten on every PUT — omitting them silently clears them to ''; switching local→external deletes the markdown file and removes the `markdown` key; switching external→local writes/overwrites notes/<id>.md and removes the `url` key; tags only updated when provided as a list"
+      },
+      {
+        "name": "Archive request body (PATCH /api/cards/<id>/archive)",
+        "fields_and_types": "archived: bool optional (defaults to True if omitted)",
+        "where_used": "archive_article() in backend/app.py:184-197",
+        "invariants": "Coerced via bool(archived) — non-bool truthy values become True; default behavior with empty body is to archive (set True), not toggle"
+      },
+      {
+        "name": "Generic API success/error envelope",
+        "fields_and_types": "Success (publish/update/archive): {ok: bool, card: Card}; Success (delete): {ok: True}; Error: {ok: False, error: str} with HTTP 4xx; abort(404) responses use Flask's default HTML error body (not JSON) — inconsistent with the JSON error envelope used elsewhere",
+        "where_used": "All POST/PUT/PATCH/DELETE handlers in backend/app.py",
+        "invariants": "GET /api/cards/<id> uses abort(404) (HTML), while POST/PUT/PATCH/DELETE use jsonify({'ok': False, ...}), 404 — clients cannot rely on JSON shape across all error paths"
+      }
+    ],
+    "endpoints_or_views": [
+      {
+        "name": "GET /api/health",
+        "description": "Liveness probe.",
+        "inputs": "none",
+        "outputs": "200 {ok: true}",
+        "side_effects": "none"
+      },
+      {
+        "name": "GET /api/cards",
+        "description": "List all cards. By default filters out archived ones.",
+        "inputs": "Query string include_archived: when value lowercased is in {'1','true','yes'}, archived cards are also returned.",
+        "outputs": "200 List[Card] in cards.json order (which is insertion-newest-first because publish prepends).",
+        "side_effects": "Reads backend/data/cards.json on every call (no caching). Will raise FileNotFoundError if cards.json is absent (no graceful seeding)."
+      },
+      {
+        "name": "GET /api/cards/<card_id>",
+        "description": "Return one card with detail. For local cards, also reads its markdown and renders HTML.",
+        "inputs": "Path param card_id (the card's id slug).",
+        "outputs": "200 Card-with-detail (adds content + content_html for local). 404 abort('Card not found') if id not in list. 404 abort('Markdown file not found') if local card's markdown file is missing on disk.",
+        "side_effects": "Reads cards.json and (for local) the .md file from disk on every call. Renders Markdown with python-markdown extensions ['fenced_code', 'tables'] each request — no caching, recomputed per hit."
+      },
+      {
+        "name": "GET /api/tags",
+        "description": "Return the union of all tags across all cards (including archived ones).",
+        "inputs": "none",
+        "outputs": "200 sorted list[str] of distinct tag strings.",
+        "side_effects": "Reads cards.json. Note: includes archived cards' tags — there is no filter by archived state, which differs from /api/cards default behavior."
+      },
+      {
+        "name": "POST /api/publish",
+        "description": "Create a new card. For local, also writes its markdown file to backend/content/notes/<id>.md.",
+        "inputs": "JSON body: category (required, external|local), title (required), summary, tags (list), cover, id (optional slug seed); url (required if external); content (required if local).",
+        "outputs": "200 {ok: true, card: Card}. 400 with {ok: false, error: ...} when category invalid, title missing, tags not a list, url missing for external, or content missing for local.",
+        "side_effects": "Slugifies id from provided id or title (handles CJK + ASCII); resolves collisions by suffixing -2, -3, ...; creates backend/content/notes/ if missing; writes the .md file with utf-8 encoding; rewrites cards.json with the new card prepended at index 0 (newest-first ordering); sets created_at to today's UTC date and archived=false."
+      },
+      {
+        "name": "PUT /api/cards/<card_id>",
+        "description": "Update an existing card in place. Supports switching category, which migrates storage (deletes md / writes md as needed).",
+        "inputs": "Path param card_id; JSON body with any subset of title, summary, tags, cover, category, url, content. category falls back to existing if omitted; title falls back to existing if omitted; summary and cover are unconditionally overwritten with the (possibly empty) stripped value.",
+        "outputs": "200 {ok: true, card: Card}. 404 {ok: false, error: 'card not found'}. 400 when category resolves to an invalid value, or url missing for external, or content missing for local.",
+        "side_effects": "Mutates cards.json. If switching to external, deletes the existing markdown file (if present) and removes the markdown key. If switching to (or staying) local, writes content to existing markdown path or notes/<card_id>.md, creating parent dir, and removes the url key. The card_id stays the same — there is no rename even if title changes (so the slug can drift from the title)."
+      },
+      {
+        "name": "PATCH /api/cards/<card_id>/archive",
+        "description": "Set the archived flag on a card.",
+        "inputs": "Path param card_id; JSON body {archived?: bool}. If body is empty or archived is omitted, defaults to True (i.e. archive, not toggle).",
+        "outputs": "200 {ok: true, card: Card}. 404 {ok: false, error: 'card not found'}.",
+        "side_effects": "Rewrites entire cards.json. Does not touch markdown files. There is no separate 'unarchive' endpoint — the client must POST {archived: false} to this endpoint to restore."
+      },
+      {
+        "name": "DELETE /api/cards/<card_id>",
+        "description": "Remove a card and, for local cards, its markdown file.",
+        "inputs": "Path param card_id.",
+        "outputs": "200 {ok: true}. 404 {ok: false, error: 'card not found'}.",
+        "side_effects": "Removes the entry from cards.json (rewrites the file); if category was 'local' and a markdown path is set, unlinks the file from disk if it exists. No backup or trash — irreversible. PROJECT_NOTES says the delete button is intentionally hidden in the admin UI to avoid mis-clicks, so this endpoint exists but is currently not wired to a visible UI control."
+      }
+    ],
+    "files": [
+      {
+        "path": "G:\\AI\\AI_private\\Cluade_code_projects\\LinkGarden\\backend\\app.py",
+        "purpose": "The entire Flask backend in one file: route definitions, JSON load/save helpers, slugify, and Markdown rendering for detail pages. Runs Flask dev server on 127.0.0.1:5001 when invoked directly.",
+        "loc": 215
+      },
+      {
+        "path": "G:\\AI\\AI_private\\Cluade_code_projects\\LinkGarden\\backend\\requirements.txt",
+        "purpose": "Pinned dependencies: Flask 3.1.3, Flask-Cors 6.0.1, markdown 3.8.2, gunicorn 23.0.0. (Gunicorn is listed but the systemd unit currently runs `python app.py` per CLAUDE.md.)",
+        "loc": 4
+      },
+      {
+        "path": "G:\\AI\\AI_private\\Cluade_code_projects\\LinkGarden\\backend\\data\\cards.json",
+        "purpose": "The single source of truth for the card list. A flat JSON array of Card objects. Read on every API request and rewritten on every mutating request. Currently holds 7 cards (all category=local at the moment).",
+        "loc": 116
+      },
+      {
+        "path": "G:\\AI\\AI_private\\Cluade_code_projects\\LinkGarden\\backend\\content\\notes\\",
+        "purpose": "Body storage for local articles. One Markdown file per local card, named exactly after the slug id. Currently 8 .md files (one — multi-agent-super-universe-draft.md — has no matching cards.json entry, suggesting orphan/draft).",
+        "loc": 0
+      },
+      {
+        "path": "G:\\AI\\AI_private\\Cluade_code_projects\\LinkGarden\\backend\\content\\notes\\测试发布小爱-link-garden-接口连通性测试.md",
+        "purpose": "Sample local article body. Starts with '# Link Garden 测试文章' which the backend strips before rendering HTML, to avoid duplicating the detail-page hero title.",
+        "loc": 18
+      }
+    ],
+    "layer": "backend",
+    "must_preserve": [
+      "Two content categories — `external` (card click jumps to original URL, no body stored locally) and `local` (Markdown stored on disk, rendered in-site). The whole publish/update/delete pipeline branches on this exactly.",
+      "Detail page must use the article's own cover, not the homepage hero — the backend already returns `cover` per card; the contract for the frontend hero must be honored.",
+      "If a Markdown body's first line is a `# H1`, the backend strips it before rendering HTML so the detail page does not show a duplicated title under the hero. (build_detail in app.py:44-47.) This behavior is referenced by both PROJECT_NOTES and CLAUDE.md and must be preserved across any rewrite.",
+      "Detail page does NOT show a right-side TOC floating card — already removed; do not reintroduce.",
+      "Homepage shows only the three big category entry cards; do not add complex first-level navigation modules.",
+      "Admin publish page layout: title at top, the body editor (md-editor-v3) is the main work area, and secondary fields (summary/tags/cover) sink to a bottom 'extra info' area. Do not rebuild a custom right-side preview — the editor's own preview is the chosen approach.",
+      "Admin list: the delete button is intentionally hidden, the visible 'view' was repurposed as a '下架' (archive) placeholder, and the 'back to front-end' entry sits in the page top-left.",
+      "Do NOT run the backend in Flask debug/reloader mode as a persistent service. (PROJECT_NOTES 需要避免的坑 #1.)",
+      "After modifying the backend Python file, syntax-check it before reloading systemd, otherwise the unit will fail to come up. (PROJECT_NOTES 需要避免的坑 #2.)",
+      "When touching detail-page CSS, do not let `.markdown-body h1/h2/h3` rules override `.article-prose`'s independent colors. (PROJECT_NOTES 需要避免的坑 #3.)",
+      "The detail page's code-card wrapping logic must not run twice on the same `<pre>` — re-running it strips the block. (PROJECT_NOTES 需要避免的坑 #4.)",
+      "New article covers should be normalized to local `/covers/<id>.png` instead of long-term external image URLs (which had broken response headers and prevented the detail-page hero from rendering). (PROJECT_NOTES 需要避免的坑 #5.)"
+    ],
+    "pain_points": [
+      "Storage is `data/cards.json` rewritten in full on every mutation with no locking. Two concurrent POST/PUT/PATCH/DELETE requests can lost-update each other (load_cards → mutate in memory → save_cards). With Flask dev server (single-thread by default) the window is tiny; under gunicorn with multiple workers (which requirements.txt anticipates) this becomes a real corruption risk.",
+      "No write-ahead/backup before save_cards: a write that crashes mid-`json.dump` truncates cards.json and there is no recovery path. Combined with `cards.json` being gitignored (per CLAUDE.md), a single bad write can lose the whole card list.",
+      "GET /api/cards/<id> uses Flask `abort(404, description=...)` which returns HTML, while POST/PUT/PATCH/DELETE return JSON `{ok: false, error: ...}`. Error shape is inconsistent across the API.",
+      "POST /api/publish does not validate that `category` is one of the allowed values via an enum/typed schema — it only does an inline membership check against the literal set `{'external','local'}`. Any new category type requires hand-editing this and the symmetric check in PUT /api/cards/<id>. The literal set is duplicated between publish_article (app.py:90) and update_article (app.py:154).",
+      "Tags are accepted as `list` only — no validation that elements are non-empty strings, no normalization (trim, dedupe, casing), no size limit. A client could send `[1, null, '   ']` for the publish endpoint and they would be saved verbatim.",
+      "`url` (for external) and `cover` are not validated as URLs. Any string (including empty for cover, or javascript: schemes for url) is accepted.",
+      "PUT /api/cards/<id> unconditionally overwrites `summary` and `cover` from the request, defaulting to '' if absent — meaning a PATCH-style partial update sent through PUT silently wipes those fields. Title falls back to existing when omitted; summary/cover do not. Asymmetric and surprising.",
+      "PATCH /api/cards/<id>/archive defaults `archived` to True when the body is empty. There is no toggle and no separate unarchive route — clients must always send the explicit value. The endpoint is named 'archive' which suggests a one-way action but is actually a setter.",
+      "DELETE /api/cards/<id> is hard-delete with no confirmation/trash. Combined with the file unlink, the operation is irreversible. The admin UI hides the button as the only safety mechanism.",
+      "Slug generation uses `datetime.utcnow().timestamp()` as the fallback (deprecated in Python 3.12) and `datetime.utcnow().strftime('%Y-%m-%d')` for `created_at` — both rely on naive UTC. `datetime.utcnow()` is deprecated; should be `datetime.now(timezone.utc)`.",
+      "`created_at` is a string `YYYY-MM-DD`, not an ISO 8601 timestamp. There is no `updated_at`, so PUT cannot be ordered against POST when sorting by 'most recently changed'.",
+      "There is no pagination on GET /api/cards — the entire list is returned every time. Fine at 7 cards, but the architecture has no answer when this grows.",
+      "There is no search/filter endpoint. Tag filtering, full-text search, category filter (`external` vs `local`) all have to be done client-side on the full list.",
+      "GET /api/tags returns tags from ALL cards including archived ones, while GET /api/cards excludes archived by default. Behavior is inconsistent and probably leaks archived-only tags into the visible tag set.",
+      "build_detail re-renders Markdown to HTML on every request — no caching despite the source file being immutable between updates. Easy to memoize keyed on file mtime.",
+      "build_detail's H1-stripping is naive: it only checks `lines[0].startswith('# ')`. A Markdown front-matter block, a leading blank line, or `#H1` (no space) all bypass the strip and re-introduce the duplicate-title problem.",
+      "No request size limits or content-type checks. POST /api/publish with a multi-MB `content` field will be loaded into memory and written to disk verbatim.",
+      "`load_cards()` opens `cards.json` with no error handling. A missing file (fresh checkout) raises FileNotFoundError → 500. CLAUDE.md notes this and tells the operator to seed `[]` manually.",
+      "`CORS(app)` enables CORS for every origin on every route. With production behind nginx same-origin, the wildcard CORS is unnecessary and arguably a footgun for any future auth.",
+      "There is no authentication or rate limiting on POST/PUT/PATCH/DELETE. If the backend is ever exposed beyond nginx's `/api/` proxy, anyone can publish, edit, archive, or delete content.",
+      "The orphan file backend/content/notes/multi-agent-super-universe-draft.md exists with no corresponding cards.json entry — the system has no garbage collection, and PUT/DELETE only operate on files referenced by `card.markdown`.",
+      "Slug-as-id means renaming an article (changing the title) does NOT change its URL. After a few title revisions the slug becomes stale and meaningless. There is no separate stable id (UUID) decoupled from the slug.",
+      "Inserting at index 0 of cards.json (`cards.insert(0, card)`) means the file order encodes display order. Any tool that re-sorts or formats cards.json (e.g. an editor's auto-sort) silently changes the homepage order.",
+      "`archived` field defaulting via `.get('archived', False)` means cards persisted before the archive feature have no `archived` key at all (see entry index 3 in current cards.json). If a future migration tightens the schema, those entries will need backfilling.",
+      "The full `cards` list is re-serialized to disk on every mutation, with `ensure_ascii=False, indent=2`. For an active site this is wasted I/O — but worse, it means any concurrent reader during a write may read a partially-written file (no atomic rename). save_cards() should write to a temp file and `os.replace`."
+    ],
+    "summary": "The backend is a single-file Flask 3.1 app (`backend/app.py`, 215 LOC) with eight routes under `/api`: a health probe, list/detail/tags reads, and four mutating routes (publish, update, archive, delete). Storage is two flat artifacts on disk — `backend/data/cards.json` (the entire card list serialized as a JSON array, rewritten in full on each mutation) and `backend/content/notes/<id>.md` files (one per `local` card; `external` cards have no body). For local cards, GET /api/cards/<id> reads the markdown file, strips a leading `# H1` line if present (to avoid duplicating the detail-page hero title), and returns both raw `content` and python-markdown-rendered `content_html` (extensions: fenced_code, tables) — re-rendered every request, no cache. CORS is open to all origins; there is no auth, no rate limiting, no schema validation library, no test suite, and no concurrency control around the cards.json read-modify-write cycle. The systemd unit on prod runs `python app.py` (Flask dev server) bound to `127.0.0.1:5001` behind nginx, despite gunicorn being listed in requirements.txt and PROJECT_NOTES explicitly warning against using debug/reloader mode as a persistent service."
+  },
+  "frontendAudit": {
+    "data_shapes": [
+      {
+        "name": "Card (list item)",
+        "fields_and_types": "id: string; title: string; category: 'external' | 'local'; summary: string; tags: string[]; cover: string (URL or absolute path like /covers/<id>.png); created_at: string (date, e.g. '2026-03-23'); archived: boolean; url?: string (only for external).",
+        "where_used": "GET /api/cards (HomeView.vue cards.value, AdminView.vue rows.value).",
+        "invariants": "category restricted to 'external'|'local'. url present iff category==='external'. AdminView relies on row.archived being a boolean to flip 下架/恢复 label. HomeView uses card.cover truthiness to switch .has-image vs .no-image cover surfaces. created_at is rendered raw and concatenated with a hardcoded ' 23:39:42' suffix in HomeView line 83 and ' 13:35:55' in DetailView line 16."
+      },
+      {
+        "name": "CardDetail",
+        "fields_and_types": "All Card fields plus content: string (raw markdown, with leading # H1 stripped server-side); content_html: string (server-rendered HTML, fenced_code+tables). For external cards content/content_html are absent or empty. AdminPublishView.loadForEdit also expects card.content to round-trip into the editor.",
+        "where_used": "GET /api/cards/<id> consumed by DetailView.vue (v-html=card.content_html) and AdminPublishView.vue (form.content from card.content).",
+        "invariants": "DetailView assumes content_html is sanitized/safe (passes raw to v-html). DetailView decorates <pre> blocks once via .code-card guard — wrapping must be idempotent (PROJECT_NOTES 坑 #4). cover is dropped into a CSS background-image url() unencoded so any space/quote in the path will break the hero."
+      },
+      {
+        "name": "Tag list",
+        "fields_and_types": "Array consumed only for .length. No field is read; the items could be strings or {name,count} — frontend never inspects them.",
+        "where_used": "GET /api/tags (HomeView.vue: tags.value = tagsRes.data; rendered as {{ tags.length }}).",
+        "invariants": "Treated as an opaque count source. If the backend changes the shape there is no breakage as long as it is array-like."
+      },
+      {
+        "name": "Publish payload (create)",
+        "fields_and_types": "category: 'local' | 'external'; title: string; summary: string; cover: string; tags: string[] (split from comma-separated tagsText, trimmed, filtered to truthy). When category==='local': content: string (markdown body from MdEditor). When category==='external': url: string.",
+        "where_used": "POST /api/publish — AdminPublishView.vue submitArticle().",
+        "invariants": "form.group ('技术类'/'随笔类'/'生活类') is collected by the UI but NOT sent — silently dropped. No client-side title/url/content validation; empty payloads are POSTed and only fail server-side. Response is expected to be { ok: true } else alert."
+      },
+      {
+        "name": "Update payload",
+        "fields_and_types": "Identical shape to Publish payload. id comes from the URL (route.query.id), not the body.",
+        "where_used": "PUT /api/cards/<id> — AdminPublishView.vue submitArticle() when isEdit.",
+        "invariants": "Same drop of form.group. Switching category between local/external is allowed in the form and shipped to backend; loadForEdit hardcodes form.group = '技术类' regardless of what the card actually was, so editing always resets that selector."
+      },
+      {
+        "name": "Archive payload",
+        "fields_and_types": "{ archived: boolean }.",
+        "where_used": "PATCH /api/cards/<id>/archive — AdminView.vue toggleArchive().",
+        "invariants": "Frontend sends archived: !row.archived and then re-fetches the full list rather than mutating row in place. No optimistic update, no error handling."
+      }
+    ],
+    "endpoints_or_views": [
+      {
+        "name": "view / (HomeView)",
+        "description": "Public landing page. Three-column-ish layout: left aside with profile card, search card, and three category cards (技术类/随笔类/生活类); right content panel with a section strip and a card grid of articles. Cards are clickable: external opens new tab, local navigates to /card/:id.",
+        "inputs": "Mounted-time GET /api/cards and GET /api/tags in parallel. Local reactive state: cards[], tags[], keyword, activeCategory ('default'|'tech'|'notes'|'life').",
+        "outputs": "DOM only. Renders cards.length, tags.length, localCount, filteredCards. Hardcoded fake stats inline ('🔥 11 热度', '💬 0 条评论', '🧡 0 点赞') and a hardcoded ' 23:39:42' time suffix appended to created_at.",
+        "side_effects": "router.push('/card/:id') on local cards, window.open(card.url, '_blank', 'noopener,noreferrer') on external. console.error on fetch failure. activeCategory toggles a banner and a CSS class but does NOT actually filter cards (filteredCards only filters by keyword)."
+      },
+      {
+        "name": "view /card/:id (DetailView)",
+        "description": "Local article detail page. Renders an article-specific hero with cover background, title, and a fake metadata row, then the server-rendered HTML body inside .article-prose with client-side hljs decoration that wraps every <pre> in a .code-card with traffic-light dots, language label, and a copy button.",
+        "inputs": "route.params.id; GET /api/cards/<id>.",
+        "outputs": "v-html of card.content_html into <article class=\"markdown-body article-prose\">. Title and metadata row from card. Hero background image is interpolated as inline style: linear-gradient(...), url(${card.cover}).",
+        "side_effects": "Imports highlight.js + github-dark.css globally. decorateCodeBlocks queries the rendered DOM, calls hljs.highlightElement, builds wrapper/toolbar/copy button DOM, attaches a click listener that uses navigator.clipboard.writeText. Idempotent via .code-card classlist check. No cleanup on unmount; if the route id changes without a full unmount, listeners are not removed (the guard only prevents double-wrap, not listener growth on the same wrapper). No loading or error state — when card is null the page is blank."
+      },
+      {
+        "name": "view /admin (AdminView)",
+        "description": "Admin shell: brand card + menu (文章管理 active, 分类管理 / 站点设置 placeholders), a top bar with 清空筛选 and 新增文章, a filter bar (keyword / kind / tag / 搜索 button), and a 7-column table of cards. Per-row actions are 编辑 (router-link to /admin/publish?id=...) and a 下架/恢复 toggle. A '⚡ 回到前台' chip is anchored at the top-left.",
+        "inputs": "Mounted-time GET /api/cards?include_archived=1 (rows). Local reactive filters {keyword, kind, tag}.",
+        "outputs": "filteredRows computed (keyword in title, kind === category, tag substring in tags[]).",
+        "side_effects": "PATCH /api/cards/<id>/archive then full reload of the list. The 搜索 button is wired to noopSearch() — does nothing; filtering is already reactive on the inputs. Delete button is intentionally absent (PROJECT_NOTES decision)."
+      },
+      {
+        "name": "view /admin/publish (AdminPublishView)",
+        "description": "Compose page. Top bar (返回管理 / 编辑文章|新增文章 / 清空 + 发布|保存). Title-first card with a single large input, then a full-bleed md-editor-v3 (theme=dark, language=zh-CN, preview-theme=github, custom toolbars list). Below it a 附加信息 card with summary textarea, two two-column grids (文章类型+内容分类 / 封面图+标签), and a conditional 跳转链接 row when category==='external'.",
+        "inputs": "route.query.id (presence => edit mode); on mount loads GET /api/cards/<id> if editing. Form: {category, group, title, summary, cover, tagsText, content, url}.",
+        "outputs": "POST /api/publish or PUT /api/cards/<id> on submit; on { ok: true } router.push('/admin'). Reset clears the form to defaults.",
+        "side_effects": "alert() on failure (uses err.response.data.error if present). form.group is collected from the UI but never serialized into payload — silently dropped. loadForEdit unconditionally sets form.group = '技术类'. No file/cover upload — cover is a free-text URL despite PROJECT_NOTES requiring local /covers/<id>.png."
+      }
+    ],
+    "files": [
+      {
+        "path": "G:/AI/AI_private/Cluade_code_projects/LinkGarden/frontend/index.html",
+        "purpose": "Vite HTML entry. Title is still the scaffold default 'frontend' (not 'Link Garden'). Loads /favicon.svg and /src/main.js as a module.",
+        "loc": 14
+      },
+      {
+        "path": "G:/AI/AI_private/Cluade_code_projects/LinkGarden/frontend/vite.config.js",
+        "purpose": "Vite config. Vue plugin only. server.host '0.0.0.0', server.port 5173. NO proxy for /api — yet every view uses apiBase='/api' (relative), so dev only works behind nginx, not directly against vite:5173.",
+        "loc": 11
+      },
+      {
+        "path": "G:/AI/AI_private/Cluade_code_projects/LinkGarden/frontend/package.json",
+        "purpose": "Vue 3.5, vite 8, vue-router 5.0.4 (note: this is the v5 line shown by npm — actual API used is the Vue Router 4 API since 5.x for vue-router doesn't exist; likely a typo or unusual range). Dependencies include axios, highlight.js, md-editor-v3, and several unused libs (@milkdown/kit, @milkdown/theme-nord, @milkdown/vue, marked, marked-highlight) bundled in but not imported by any active view.",
+        "loc": 28
+      },
+      {
+        "path": "G:/AI/AI_private/Cluade_code_projects/LinkGarden/frontend/src/main.js",
+        "purpose": "App bootstrap. createWebHistory router with 4 flat routes; imports ./assets/style.css (the active 2400+ line stylesheet). Mounts <App /> into #app.",
+        "loc": 21
+      },
+      {
+        "path": "G:/AI/AI_private/Cluade_code_projects/LinkGarden/frontend/src/App.vue",
+        "purpose": "Layout shell. Uses route.path to switch between three branches: home shell (hero-banner+top-nav+main), admin-page-shell, detail-page-shell. Renders 24 decorative .particle spans on every route. Hero background image is HARDCODED to an external gameuniverse.top URL with a signed query token (violates PROJECT_NOTES 坑 #5). Top-nav has 8 dead links (href=\"#\") plus a router-link to /admin and an avatar pulling /images/avatar.jpg. Hero h1 reads '技术卡片花园' though PROJECT_NOTES sets the canonical tagline as '是个人博客，也是技术收藏展厅' (it's used as a hint sub-line instead). 🚀 back-to-top button shows when scrollY>420.",
+        "loc": 134
+      },
+      {
+        "path": "G:/AI/AI_private/Cluade_code_projects/LinkGarden/frontend/src/style.css",
+        "purpose": "Vite scaffold default stylesheet. NOT imported anywhere (main.js imports ./assets/style.css). Dead code, ~5KB.",
+        "loc": 325
+      },
+      {
+        "path": "G:/AI/AI_private/Cluade_code_projects/LinkGarden/frontend/src/assets/style.css",
+        "purpose": "Single global stylesheet for the whole app. Defines :root tokens (--bg, --panel, --accent, --accent2, --muted), particles, hero-banner, sidebar/profile/search cards, category cards, content-grid + article-card variants (default + tech-mode), top-nav, admin-shell + admin-table, AdminPublishView compose-* layout, md-editor overrides, detail page article-hero (multiple incompatible variants: bloglike-hero, clean-article-hero, article-hero), .article-prose typography, .code-card decoration, back-to-top, and many obsolete overrides (e.g. .section-head-card { display: none } after styling it, .bloglike-hero-inner { grid-template-columns: 1fr !important; } cancelling the grid above, !important h2/h3 colors at the bottom, duplicate .card-cover.has-image height definitions). Several rule families exist for layouts that no view uses anymore (publish-toolbar, workspace-layout, editor-workbench, milkdown-host, three-col, pure-workspace-layout, editor-layout).",
+        "loc": 2441
+      },
+      {
+        "path": "G:/AI/AI_private/Cluade_code_projects/LinkGarden/frontend/src/views/HomeView.vue",
+        "purpose": "Home page. Sidebar (profile card + search card + 3 sidebar category cards) + content-panel (channel banner when activeCategory!=='default' + section-strip + content-grid of article cards). filteredCards filters by keyword across title/tags only (does NOT use activeCategory). openCard branches by category. Hardcoded fake stats and a hardcoded ' 23:39:42' suffix on every card's time.",
+        "loc": 175
+      },
+      {
+        "path": "G:/AI/AI_private/Cluade_code_projects/LinkGarden/frontend/src/views/DetailView.vue",
+        "purpose": "Local article detail. .bloglike-hero with the article's cover; static info row ('👤 pureworld', '🕒 {created_at} 13:35:55', '🔥 10', '💬 0', '🧡 0' — all hardcoded except created_at). After fetching, applyHighlight()→nextTick→decorateCodeBlocks runs hljs and builds .code-card wrappers with copy buttons. No loading skeleton, no error state, no 404 fallback if id is invalid.",
+        "loc": 109
+      },
+      {
+        "path": "G:/AI/AI_private/Cluade_code_projects/LinkGarden/frontend/src/views/AdminView.vue",
+        "purpose": "Admin article management. Sidebar with 3 menu items (only '文章管理' active, others non-functional placeholders). Filter bar of three text/select inputs and a noopSearch button. Table of 7 columns. Per-row 编辑 link and 下架/恢复 toggle calling toggleArchive (PATCH then full reload). 回到前台 chip top-left.",
+        "loc": 148
+      },
+      {
+        "path": "G:/AI/AI_private/Cluade_code_projects/LinkGarden/frontend/src/views/AdminPublishView.vue",
+        "purpose": "Compose / edit. Title input, full-bleed MdEditor (md-editor-v3), 附加信息 settings card (摘要/类型+分类/封面+标签/外部链接). isEdit derived from route.query.id; on mount loads the card and prefills. Submit posts to /api/publish or /api/cards/<id> and redirects on { ok }. form.group is dead UI state.",
+        "loc": 158
+      },
+      {
+        "path": "G:/AI/AI_private/Cluade_code_projects/LinkGarden/frontend/src/components/HelloWorld.vue",
+        "purpose": "Vite scaffold leftover. Counter demo plus Vite/Vue social cards. Not imported anywhere in the app. Pure dead code.",
+        "loc": 94
+      },
+      {
+        "path": "G:/AI/AI_private/Cluade_code_projects/LinkGarden/frontend/src/components/MilkdownEditor.vue",
+        "purpose": "Milkdown wrapper component (used during the milkdown experiment). Not imported by any view (the publish page uses md-editor-v3 directly). Dead, but its npm deps still ship in package.json. Uses a setTimeout polling loop and attaches an 'input' DOM listener directly on .ProseMirror.",
+        "loc": 57
+      }
+    ],
+    "layer": "frontend",
+    "must_preserve": [
+      "海报已改为本地化存储方案：目录：frontend/public/covers/，规则：按文章 id 命名 (PROJECT_NOTES 已完成的重要事项 → 内容与海报)",
+      "新文章海报尽量统一转成本地 /covers/<id>.png，不要长期依赖外链 (PROJECT_NOTES 需要避免的坑 #5)",
+      "卡片 hover：图片放大、阴影反馈、卡片不位移 (PROJECT_NOTES 已完成 → 前台)",
+      "文章详情页使用文章自身海报作为头图，不再复用首页海报 (PROJECT_NOTES 已完成 → 前台)",
+      "如果 Markdown 首行是 # 一级标题，详情页渲染时会剥掉，避免与头图标题重复 (PROJECT_NOTES 文章详情页)",
+      "首页只放三个大类卡片，不继续加复杂一级导航模块 (PROJECT_NOTES 首页)",
+      "英文 LINK GARDEN 已去掉 (PROJECT_NOTES 首页)",
+      "Hero 文案当前为：是个人博客，也是技术收藏展厅 (PROJECT_NOTES 首页)",
+      "去掉返回按钮 (PROJECT_NOTES 文章详情页)",
+      "去掉右侧目录浮卡 (PROJECT_NOTES 文章详情页)",
+      "标题在最上方 (PROJECT_NOTES 后台新增文章页)",
+      "主体使用编辑器本身预览能力，不再重复手搓右侧预览 (PROJECT_NOTES 后台新增文章页)",
+      "摘要、标签、封面等次要信息下沉到底部\"附加信息\"区 (PROJECT_NOTES 后台新增文章页)",
+      "删除按钮暂时隐藏，避免误触 (PROJECT_NOTES 后台文章管理页)",
+      "\"查看\"已改成\"下架\"占位 (PROJECT_NOTES 后台文章管理页)",
+      "\"回到前台\"入口独立放在页面左上角 (PROJECT_NOTES 后台文章管理页)",
+      "改详情页 CSS 时注意不要让 .markdown-body h1/h2/h3 把 .article-prose 的单独颜色覆盖掉 (PROJECT_NOTES 需要避免的坑 #3)",
+      "详情页代码卡片包装逻辑不要重复执行，否则容易把 pre 整块删掉 (PROJECT_NOTES 需要避免的坑 #4)",
+      "新增页改为 md-editor-v3 编辑器方案 (PROJECT_NOTES 已完成 → 后台)",
+      "h1 / h2 / h3 有独立视觉层级 (PROJECT_NOTES 标题层级样式增强)",
+      "详情页代码块改成代码卡片风格 (PROJECT_NOTES 已完成 → 前台)",
+      "详情页正文排版增强 / 表格样式优化 (PROJECT_NOTES 已完成 → 前台)",
+      "首页 Hero 大海报；顶部透明导航；右下角火箭返回顶部；左侧个人信息卡与搜索卡；三大分类卡：技术类 / 随笔类 / 生活类 (PROJECT_NOTES 前台 已完成项)",
+      "不再做首页\"单卡片自动放大/居中\"等特殊规则；不做首页多卡片 2/3/4 篇特殊排布策略 (PROJECT_NOTES 已明确否掉)"
+    ],
+    "pain_points": [
+      "App.vue line 77: heroImage is a hardcoded external URL (gameuniverse.top:81/...png?sign=...:0) with a signed token. This is the exact violation PROJECT_NOTES 坑 #5 calls out for article covers — and it sits at the most visible spot of the home page. If the token expires, the home hero blanks out.",
+      "App.vue lines 14-21: 8 navigation items (🏠 首页 / 📒 记录 / 💖 杂记 / 🧭 随笔 / 📷 旅拍 / 🧰 百宝箱 / 💬 留言 / 🪐 联系我) all use href=\"#\". They visibly fragment-jump and reset scroll instead of routing. Only 后台 actually navigates.",
+      "App.vue h1 hero text reads '技术卡片花园'; PROJECT_NOTES 首页 says the canonical line is '是个人博客，也是技术收藏展厅'. That line is currently demoted into the small .hero-hint span beside the button.",
+      "App.vue particles render across home, admin, AND detail routes (the .particles div is outside all the route templates). 24 absolutely-positioned animated spans pile on top of the admin table and detail prose for no design reason.",
+      "HomeView.vue lines 86-89 and 91-92: per-card stats are hardcoded ('🔥 11 热度', '💬 0 条评论', '🧡 0 点赞') and the time has a fixed ' 23:39:42' suffix glued onto card.created_at. Every card on the home shows the same fake numbers.",
+      "HomeView.vue activeCategory state is collected from sidebar category buttons but filteredCards (lines 158-164) ignores it — only keyword filters. The category cards are visual-only despite looking interactive (active class, banner change, layout-tech mode).",
+      "HomeView.vue noopSearch is wired to the search button. The keyword input is reactive so the button is decorative, but users will press it and assume nothing is searching.",
+      "HomeView.vue layout-tech tech-mode CSS exists in style.css but the activeCategory click that sets the class never narrows the cards to tech ones — meaning unrelated articles render in the 'tech feature' two-column layout.",
+      "DetailView.vue line 16: hardcoded ' 13:35:55' time and lines 17-19 hardcoded fake counters (🔥 10 / 💬 0 / 🧡 0) and a hardcoded byline '👤 pureworld'.",
+      "DetailView.vue uses card.cover unencoded inside background-image: url(${card.cover}). Any space, parenthesis, or quote in the path will break the gradient. Should at least wrap the URL or encodeURI it.",
+      "DetailView.vue v-html=card.content_html with no sanitization on top of server output. If a future content path injects untrusted markdown the page is open to XSS — there is no DOMPurify or equivalent.",
+      "DetailView.vue has no loading state, no error state, no 404 fallback. If the id is wrong or the API errors, the page is silently blank.",
+      "DetailView.vue decorateCodeBlocks is idempotent on .code-card class but has no cleanup. If a future change ever recreates the wrapper (route reuse, navigation between cards), the click listener accumulates with the wrapper.",
+      "AdminView.vue 搜索 button calls noopSearch — duplicate of the issue on home. Filtering is already reactive; the button confuses users.",
+      "AdminView.vue toggleArchive does an awaited PATCH then a full GET reload of the entire list. No optimistic update, no error handling, the whole table flickers on every toggle.",
+      "AdminView.vue table has no pagination, no sorting, no debouncing. Will not scale past tens of cards.",
+      "AdminPublishView.vue: form.group ('技术类'/'随笔类'/'生活类') is bound to a select but not included in the publish/update payload (lines 134-142). The UI suggests categorization that the backend never receives.",
+      "AdminPublishView.vue loadForEdit (line 124) hardcodes form.group = '技术类' regardless of what the card is, so editing always silently resets that selector even if the backend later supports it.",
+      "AdminPublishView.vue cover field is a free-text URL input. PROJECT_NOTES requires covers to be local /covers/<id>.png — no upload UI exists, no /covers/<id>.png hint, no preview. Authors must manually drop a file then type the path.",
+      "AdminPublishView.vue submit has no client validation: empty title or empty url for external is happily POSTed and only fails on the server with a generic alert.",
+      "AdminPublishView.vue uses the toolbar string 'codeRow' which is not a valid md-editor-v3 toolbar key (the canonical is 'code' for fence and 'codeRow' is non-standard). Worth verifying against md-editor-v3 v6 — likely renders nothing.",
+      "package.json carries unused dependencies: @milkdown/kit, @milkdown/theme-nord, @milkdown/vue (only referenced by the unused MilkdownEditor.vue), marked, marked-highlight (no view imports them — server renders to HTML and DetailView uses hljs). Bundle and lockfile bloat.",
+      "frontend/src/components/HelloWorld.vue is the Vite scaffold demo and is not referenced by any view. Pure dead code that ships in repo.",
+      "frontend/src/components/MilkdownEditor.vue is unused. It also relies on a setTimeout polling loop and binds 'input' to .ProseMirror via getElementsByQuerySelector — fragile if ever revived.",
+      "frontend/src/style.css (root) is the Vite scaffold sheet (~325 LOC). main.js does not import it — but it sits in src as if it were live. Should be deleted; new contributors will edit it expecting it to apply.",
+      "frontend/src/assets/style.css is one 2441-line global stylesheet with multiple obsolete subsystems still present: editor-layout, workspace-layout, workspace-layout-priority, pure-workspace-layout, editor-workbench, three-col, milkdown-host, publish-toolbar, fixed-preview-shell — none of which are rendered by the current views (the publish page only uses .compose-*).",
+      "assets/style.css line 457: .section-head-card { display: none } after ~50 lines of styling it. Dead but kept.",
+      "assets/style.css line 2136: .bloglike-hero-inner { grid-template-columns: 1fr !important; } overrides the carefully built two-column hero grid above, making the hero-right-floating column unreachable.",
+      "assets/style.css lines 2414-2415: .article-prose h2/h3 colors enforced with !important — direct workaround for PROJECT_NOTES 坑 #3 instead of fixing the cascade. The original .markdown-body color rule was already declared empty (line 129).",
+      "assets/style.css duplicates: .card-cover.has-image height set to 168px (line 470), then 186px (line 506), then 210px (line 1834) — different sections silently fight each other.",
+      "vite.config.js has no /api proxy. Every view uses apiBase='/api' (relative). Result: `npm run dev` against vite:5173 returns 404 for all API calls unless the user proxies via nginx or runs the build behind it. CLAUDE.md flags this same hazard.",
+      "main.js router has no catch-all '/:pathMatch(.*)*' route. Any wrong URL renders an empty <main> with no error.",
+      "App.vue: the avatar at /images/avatar.jpg is loaded from a static path; if the file is missing the broken-image icon shows next to a transparent nav with no fallback.",
+      "App.vue heroStyle is built once at module load and never recomputed; switching themes/light-dark or changing the hero requires a full reload.",
+      "AdminPublishView toolbars list mixes Chinese-context items but theme=\"dark\" with preview-theme='github' produces a contrasting white preview pane — visual inconsistency vs the rest of the site's deep dark.",
+      "Detail page hero info row claims '👤 pureworld' but the home avatar img and brand are '净界' — author identity is inconsistent across surfaces.",
+      "AdminView '分类管理' and '站点设置' menu items are <button>s with no @click and no aria-disabled — fully clickable visually but inert."
+    ],
+    "summary": "Link Garden's frontend is a Vue 3 + Vite SPA with a flat 4-route router (/, /card/:id, /admin, /admin/publish) wired in main.js, a single App.vue layout shell that switches between home / detail / admin chrome based on the route, four monolithic .vue views, two unused components (HelloWorld scaffold and a Milkdown experiment), and one ~2400-line global stylesheet at src/assets/style.css that carries several generations of compose-page experiments piled on top of each other. Data flow is axios direct to /api/* (relative — no Vite proxy is configured, so dev only works behind nginx), with content fetched at mount and rendered straight into the DOM (v-html for server-rendered article HTML, then highlight.js + a custom decorateCodeBlocks pass that wraps every <pre> in a .code-card with traffic-light dots and a copy button). The home and detail pages still ship hardcoded fake stats and timestamps inline with real backend data, the home category sidebar is wired to UI state that filteredCards never consults, AdminPublishView collects a 内容分类 (group) field but never serializes it into the publish/update payload, and App.vue's hero background is a hardcoded external signed URL — the exact pattern PROJECT_NOTES tells future maintainers to avoid. The codebase is functional but rough: layout-affecting CSS bug fixes are stacked with !important overrides, several obsolete layout systems still live in style.css, and unused dependencies (@milkdown/*, marked, marked-highlight) still ship in package.json."
+  },
+  "backendResearch": {
+    "stack": "Vue 3.5 (Composition API + `<script setup>`) + TypeScript 5.7+, built with Vite 7 (or Vite 8 once stable mid-2026), type-checked by vue-tsc 2.2+, state via Pinia 3 setup stores, routing via vue-router 4, API client built on a generated OpenAPI layer (openapi-typescript 7 + openapi-fetch for the type-only path, or orval 7 + @tanstack/vue-query when end-to-end RPC ergonomics are wanted), markdown via md-editor-v3 5.x with highlight.js 11.x, lint with ESLint 9 flat config + Prettier 3, tests with Vitest 3 + @vue/test-utils 2, optional Playwright 1.5x for e2e. Node 20.19+ / 22 LTS is required by current Vite/Vitest. Use pnpm workspaces if you also ship the FastAPI backend in the same repo.",
+    "reference_layout": "project-root/\n├── index.html\n├── vite.config.ts\n├── tsconfig.json                # references project tsconfigs\n├── tsconfig.app.json            # src code, \"moduleResolution\": \"Bundler\"\n├── tsconfig.node.json           # vite.config, scripts\n├── tsconfig.vitest.json\n├── eslint.config.ts             # ESLint 9 flat config\n├── .prettierrc\n├── .env / .env.development / .env.production\n├── openapi.yaml                 # snapshot of FastAPI schema (or fetched at codegen)\n├── orval.config.ts              # if using orval\n├── package.json\n└── src/\n    ├── main.ts                  # createApp, install router/pinia/plugins\n    ├── App.vue\n    ├── router/\n    │   ├── index.ts             # createRouter + lazy routes\n    │   └── guards.ts            # auth, title, NProgress\n    ├── stores/                  # Pinia setup stores, one file per domain\n    │   ├── auth.ts\n    │   ├── ui.ts\n    │   └── index.ts             # pinia plugin registration (persist, hot)\n    ├── api/\n    │   ├── client.ts            # configured openapi-fetch / axios / ofetch instance\n    │   ├── interceptors.ts      # auth header, error normalization, retry\n    │   ├── generated/           # output of openapi-typescript or orval (gitignored or checked in)\n    │   │   ├── schema.d.ts\n    │   │   └── endpoints.ts\n    │   └── modules/             # hand-written wrappers grouped by resource\n    │       ├── links.ts\n    │       └── tags.ts\n    ├── composables/             # reusable logic, useXxx\n    │   ├── useDebouncedRef.ts\n    │   ├── usePagination.ts\n    │   └── useApiQuery.ts       # thin wrapper over vue-query if used\n    ├── views/                   # route-level pages\n    │   ├── HomeView.vue\n    │   └── links/\n    │       ├── LinkListView.vue\n    │       └── LinkEditView.vue\n    ├── layouts/                 # AppLayout, BlankLayout\n    ├── components/\n    │   ├── common/              # generic UI (BaseButton, BaseModal)\n    │   ├── editor/              # md-editor-v3 wrapper, highlight.js config\n    │   └── domain/              # feature components (LinkCard, TagPicker)\n    ├── directives/              # v-focus, v-clickaway\n    ├── plugins/                 # app.use() targets\n    ├── locales/                 # vue-i18n if needed\n    ├── types/                   # cross-cutting types, module augmentations\n    │   ├── env.d.ts             # ImportMetaEnv augmentation\n    │   ├── shims-vue.d.ts\n    │   └── api.ts               # re-exports from generated/schema.d.ts\n    ├── utils/                   # pure functions, no Vue imports\n    ├── assets/                  # imported assets (svg, scss partials)\n    ├── styles/                  # global stylesheets, design tokens\n    └── tests/\n        ├── unit/                # *.spec.ts colocated or here\n        ├── setup.ts             # @vue/test-utils global stubs\n        └── e2e/                 # Playwright specs (also fine at /e2e top-level)",
+    "libraries": [
+      {
+        "name": "vue",
+        "version": "^3.5.13",
+        "reason": "Latest 3.5 line, brings useTemplateRef, useId, defineModel stable, reactive props destructure - improves TS DX with <script setup>."
+      },
+      {
+        "name": "vue-router",
+        "version": "^4.5.0",
+        "reason": "Stable router with typed routes via experimental unplugin-vue-router; pairs with lazy route components."
+      },
+      {
+        "name": "pinia",
+        "version": "^3.0.1",
+        "reason": "Pinia 3 drops Vue 2 compat, smaller, ESM-only. Setup stores give the cleanest TS inference."
+      },
+      {
+        "name": "pinia-plugin-persistedstate",
+        "version": "^4.2.0",
+        "reason": "Persist auth/UI state to localStorage; v4 supports Pinia 3."
+      },
+      {
+        "name": "typescript",
+        "version": "~5.7.2",
+        "reason": "Vue 3.5 / vue-tsc 2.2 expect TS 5.6+. Use a tilde to avoid surprise minors."
+      },
+      {
+        "name": "vite",
+        "version": "^7.0.0",
+        "reason": "Current GA at mid-2026 cycle (Vite 8 may be in beta). Rolldown-vite is opt-in for faster builds."
+      },
+      {
+        "name": "@vitejs/plugin-vue",
+        "version": "^5.2.0",
+        "reason": "Required SFC plugin, tracks Vue 3.5 features."
+      },
+      {
+        "name": "vue-tsc",
+        "version": "^2.2.0",
+        "reason": "Volar 2 based, much faster than 1.x. Use with --build for project references."
+      },
+      {
+        "name": "vite-plugin-checker",
+        "version": "^0.8.0",
+        "reason": "Runs vue-tsc + ESLint in a worker so dev server stays fast while still failing on type errors."
+      },
+      {
+        "name": "unplugin-auto-import",
+        "version": "^0.18.0",
+        "reason": "Optional but high-value: auto-imports ref/computed/useRoute, cuts boilerplate; emits .d.ts."
+      },
+      {
+        "name": "unplugin-vue-components",
+        "version": "^0.27.0",
+        "reason": "Auto-import components from src/components with full TS types."
+      },
+      {
+        "name": "unplugin-vue-router",
+        "version": "^0.10.0",
+        "reason": "File-based routes with typed `useRoute`/`router.push` - eliminates route-name string mistakes."
+      },
+      {
+        "name": "openapi-typescript",
+        "version": "^7.5.0",
+        "reason": "Type-only generator. Pair with openapi-fetch for a 5KB runtime that stays 1:1 with FastAPI's /openapi.json."
+      },
+      {
+        "name": "openapi-fetch",
+        "version": "^0.13.0",
+        "reason": "Tiny typed fetch wrapper that consumes openapi-typescript output. Recommended when you want types without a heavy client."
+      },
+      {
+        "name": "orval",
+        "version": "^7.3.0",
+        "reason": "Alternative codegen that emits full Axios/fetch/vue-query hooks. Pick this only if you want generated useXxx composables instead of writing them."
+      },
+      {
+        "name": "@tanstack/vue-query",
+        "version": "^5.62.0",
+        "reason": "If using orval --client=vue-query, or just want cache/retry/refetch primitives over openapi-fetch."
+      },
+      {
+        "name": "ofetch",
+        "version": "^1.4.0",
+        "reason": "Optional native-fetch client (unjs). Lighter than axios, retries + interceptors built in. Good default if you don't use openapi-fetch."
+      },
+      {
+        "name": "axios",
+        "version": "^1.7.0",
+        "reason": "Only if the team strongly prefers it; otherwise prefer openapi-fetch or ofetch in 2026."
+      },
+      {
+        "name": "md-editor-v3",
+        "version": "^5.4.0",
+        "reason": "Stays per requirement; v5 supports Vue 3.5 and bundles its own highlight.js peer."
+      },
+      {
+        "name": "highlight.js",
+        "version": "^11.10.0",
+        "reason": "Stays per requirement; import only needed languages to keep bundle small."
+      },
+      {
+        "name": "@vueuse/core",
+        "version": "^12.0.0",
+        "reason": "Battle-tested composables (useStorage, useDebounceFn, useEventListener) - avoid reinventing."
+      },
+      {
+        "name": "vee-validate",
+        "version": "^4.15.0",
+        "reason": "Recommended for forms; integrates with zod via @vee-validate/zod."
+      },
+      {
+        "name": "zod",
+        "version": "^3.23.0",
+        "reason": "Runtime validation for inputs that didn't come through OpenAPI types."
+      }
+    ],
+    "tooling": [
+      {
+        "name": "pnpm",
+        "role": "Package manager. Workspaces for monorepo with FastAPI; strict by default."
+      },
+      {
+        "name": "Node 20.19+ / 22 LTS",
+        "role": "Required runtime for Vite 7+ and Vitest 3."
+      },
+      {
+        "name": "vue-tsc --build",
+        "role": "Type-check command in CI; faster with project references."
+      },
+      {
+        "name": "vite-plugin-checker",
+        "role": "Dev-time type+lint feedback in worker thread."
+      },
+      {
+        "name": "ESLint 9 flat config",
+        "role": "Linting; combine eslint-plugin-vue (v10), typescript-eslint (v8), eslint-config-prettier."
+      },
+      {
+        "name": "Prettier 3",
+        "role": "Formatting; eslint-config-prettier disables conflicting rules."
+      },
+      {
+        "name": "Vitest 3",
+        "role": "Unit tests; jsdom or happy-dom env, @vue/test-utils 2."
+      },
+      {
+        "name": "Playwright 1.5x",
+        "role": "Optional e2e; runs against `vite preview` in CI."
+      },
+      {
+        "name": "Husky + lint-staged",
+        "role": "Pre-commit lint/format; keep cheap (no full vue-tsc on commit)."
+      },
+      {
+        "name": "openapi-typescript CLI",
+        "role": "Codegen step wired as `pnpm gen:api` pulling from FastAPI's /openapi.json."
+      },
+      {
+        "name": "Storybook 8",
+        "role": "Optional component workshop; @storybook/vue3-vite builder."
+      },
+      {
+        "name": "GitHub Actions / CI",
+        "role": "Run lint, vue-tsc, vitest, playwright; cache pnpm + Vite cache dir."
+      }
+    ],
+    "pitfalls": [
+      "vue-tsc 2.x is much faster than 1.x but still 3-5x slower than plain tsc; in CI, run `vue-tsc --build` and gate it as a separate job so unit tests can run in parallel.",
+      "Vite 7 dropped Node 18; CI images and Dockerfiles must use Node 20.19+ or 22 LTS or you'll get cryptic ESM resolution errors.",
+      "Rolldown-vite is opt-in. It speeds up builds but a few plugins (older babel-based ones, some legacy vite-plugin-* packages) misbehave. Pin classic Vite until your plugin set is verified.",
+      "Pinia setup stores give the best TypeScript inference but `$reset()` is not auto-generated - either implement a manual reset action or stick to option stores when you rely on $reset.",
+      "Setup stores can break HMR state if you don't return everything from the setup function; always return state refs even if only used inside actions.",
+      "openapi-typescript is types-only - if you forget to also install openapi-fetch (or wire its types into axios), you'll have great types and zero runtime safety. Don't manually narrow `any` responses.",
+      "orval generates a lot of code (one file per endpoint). Commit the output or it slows fresh installs; if you commit it, treat it as generated and exclude from ESLint with an override.",
+      "openapi-fetch path params use a typed `{ params: { path: { id } } }` shape - easy to mis-type and get `unknown`. Wrap calls in src/api/modules/* so callers don't see the raw shape.",
+      "axios interceptors are stateful globals; with multiple Vite environments (test, app) you can leak auth headers between Vitest workers. Prefer creating a fresh client per app/test or use ofetch with $fetch.create().",
+      "ofetch's error object is non-standard (FetchError); standardize it through a small wrapper before stores see it, otherwise your error UI will be inconsistent vs axios code paths.",
+      "md-editor-v3 ships its own highlight.js dependency. If you also import highlight.js directly, dedupe via pnpm overrides or you'll bundle two copies (~80KB extra). Configure md-editor-v3 to use your shared `hljs` instance.",
+      "highlight.js auto-detect mode pulls every language. Always import the specific languages you need and call `hljs.registerLanguage` to keep the bundle under ~50KB.",
+      "ESLint 9 flat config with eslint-plugin-vue requires v10 of the plugin - older versions only export legacy configs. Mixing legacy + flat configs silently drops Vue rules.",
+      "vue-router 4 typed routes via unplugin-vue-router are still labelled experimental - the API has changed twice. Pin the version and read the changelog before upgrading.",
+      "Pinia 3 is ESM-only; if any consumer (Storybook addon, jest) is still CJS, switch it to ESM or stay on Pinia 2.x.",
+      "vite-plugin-checker re-runs vue-tsc on every change - on big projects this can saturate a CPU. Throttle with `terminal: false, overlay: true` and exclude `**/generated/**`.",
+      "When generating types from FastAPI, ensure FastAPI is configured with `separate_input_output_schemas=True` (default in modern Pydantic v2) or you'll see duplicated types and request/response shape collisions.",
+      "Don't put generated API code under src/ if your tsconfig has `noUnusedLocals: true` - codegen sometimes emits unused imports. Use a separate path with relaxed lint rules.",
+      "<script setup> + defineModel makes two-way binding clean, but with TS strict, the modelValue prop type must be explicit; relying on inference breaks when consumers use generic v-model."
+    ],
+    "sources": [
+      "https://vuejs.org/guide/scaling-up/tooling.html",
+      "https://vuejs.org/guide/typescript/overview.html",
+      "https://pinia.vuejs.org/core-concepts/",
+      "https://router.vuejs.org/",
+      "https://vite.dev/guide/",
+      "https://vite.dev/blog/announcing-vite7",
+      "https://github.com/vuejs/language-tools (vue-tsc)",
+      "https://openapi-ts.dev/ (openapi-typescript + openapi-fetch docs)",
+      "https://orval.dev/",
+      "https://eslint.vuejs.org/ (eslint-plugin-vue v10 flat config docs)",
+      "https://vitest.dev/",
+      "https://playwright.dev/",
+      "https://github.com/imzbf/md-editor-v3",
+      "https://highlightjs.org/",
+      "https://vueuse.org/",
+      "https://tanstack.com/query/latest/docs/framework/vue/overview",
+      "https://github.com/posva/unplugin-vue-router",
+      "https://fastapi.tiangolo.com/advanced/generate-clients/"
+    ]
+  },
+  "frontendResearch": {
+    "stack": "FastAPI 0.118.x + Pydantic v2.11 + SQLAlchemy 2.0 (async, typed DeclarativeBase) + Alembic 1.14 + aiosqlite (dev) / asyncpg (prod-swap) + PyJWT + bcrypt, served by gunicorn 23 with uvicorn[standard] 0.34 workers behind nginx. Tooling: uv for env + locking, ruff for lint/format, pyright for static types, pytest + pytest-asyncio + httpx for tests, pre-commit, Docker. Monorepo layout with /backend and /frontend siblings; Python sources live under backend/src/app using a PEP 621 src-layout so editable installs and tests resolve cleanly.",
+    "reference_layout": "LinkGarden/\n  frontend/                        # Vue 3 (Vite, pnpm) — sibling, not under backend\n  backend/\n    pyproject.toml                 # PEP 621, [project] + [tool.ruff] + [tool.pyright] + [tool.pytest.ini_options]\n    uv.lock                        # uv-managed lockfile\n    alembic.ini\n    Dockerfile\n    .env.example\n    Makefile                       # make dev / make test / make migrate\n    src/\n      app/\n        __init__.py\n        main.py                    # FastAPI() factory: create_app(), lifespan, middleware, mount routers\n        api/\n          __init__.py\n          deps.py                  # get_db, get_current_admin, settings dep\n          v1/\n            __init__.py\n            router.py              # APIRouter(prefix=\"/v1\") aggregates endpoints/*\n            endpoints/\n              __init__.py\n              auth.py              # POST /auth/login -> JWT\n              health.py\n              links.py             # domain routes (LinkGarden)\n              tags.py\n        core/\n          __init__.py\n          config.py                # pydantic-settings BaseSettings, .env, DATABASE_URL, SECRET_KEY\n          security.py              # bcrypt hash/verify, jwt encode/decode (PyJWT)\n          logging.py               # structlog or stdlib dictConfig\n          exceptions.py            # domain exceptions + handlers\n        db/\n          __init__.py\n          base.py                  # class Base(DeclarativeBase): pass + naming_convention\n          session.py               # async_engine, async_sessionmaker, get_db()\n          sqlite_pragmas.py        # event.listens_for(Engine,\"connect\") -> WAL, foreign_keys=ON\n          init_db.py               # bootstrap admin user\n        models/                    # SQLAlchemy ORM (Mapped[...] annotated)\n          __init__.py\n          mixins.py                # TimestampMixin (created_at, updated_at)\n          user.py\n          link.py\n          tag.py\n        schemas/                   # Pydantic v2 (model_config = ConfigDict(from_attributes=True))\n          __init__.py\n          token.py\n          user.py\n          link.py\n          tag.py\n          common.py                # Page[T], ErrorResponse\n        services/                  # business logic, transaction-owning\n          __init__.py\n          auth_service.py\n          link_service.py\n        repositories/              # thin data-access (optional; collapse into services if small)\n          __init__.py\n          link_repo.py\n        alembic/\n          env.py                   # async migrate via connection.run_sync(do_migrations)\n          script.py.mako\n          versions/\n    tests/\n      conftest.py                  # async fixtures: engine, session, client (httpx.AsyncClient + ASGITransport)\n      factories.py                 # polyfactory or hand-rolled\n      api/\n        test_auth.py\n        test_links.py\n      services/\n        test_link_service.py\n    scripts/\n      seed.py\n      create_admin.py",
+    "libraries": [
+      {
+        "name": "fastapi",
+        "version": "~=0.118",
+        "reason": "Async web framework; 0.115+ stabilized lifespan and Annotated dependency style. Pin to ~=0.118 (mid-2026 line) to track Pydantic v2 + Starlette upgrades."
+      },
+      {
+        "name": "pydantic",
+        "version": "~=2.11",
+        "reason": "Validation + settings-base. v2 rewrite (pydantic-core in Rust) is mandatory for FastAPI >=0.100. Stay on the 2.x line; do not allow 3.x bumps without review."
+      },
+      {
+        "name": "pydantic-settings",
+        "version": "~=2.6",
+        "reason": "BaseSettings split out of pydantic in v2; reads .env and env vars with type coercion."
+      },
+      {
+        "name": "sqlalchemy",
+        "version": "~=2.0.36",
+        "reason": "Typed ORM with Mapped[]/mapped_column and AsyncEngine. 2.0 is the current major; 2.1 is not yet GA. Install with the asyncio extra: sqlalchemy[asyncio]."
+      },
+      {
+        "name": "alembic",
+        "version": "~=1.14",
+        "reason": "Migrations. Generate env.py in async template; uses connection.run_sync(context.run_migrations) under the hood."
+      },
+      {
+        "name": "aiosqlite",
+        "version": "~=0.20",
+        "reason": "Async SQLite driver (sqlite+aiosqlite:///./linkgarden.db). Dev/default datastore."
+      },
+      {
+        "name": "asyncpg",
+        "version": "~=0.30",
+        "reason": "Async Postgres driver for the prod swap (postgresql+asyncpg://...). Keep it in pyproject as an optional extra so the dev install stays slim."
+      },
+      {
+        "name": "pyjwt",
+        "version": "~=2.10",
+        "reason": "JWT encode/decode. Prefer over python-jose, which has been effectively unmaintained for years and ships a vulnerable ecdsa transitive dep."
+      },
+      {
+        "name": "bcrypt",
+        "version": "~=4.2",
+        "reason": "Password hashing. Call bcrypt.hashpw / checkpw directly; passlib's bcrypt backend has ongoing compatibility friction with bcrypt 4.x and passlib itself is stagnant."
+      },
+      {
+        "name": "python-multipart",
+        "version": "~=0.0.20",
+        "reason": "Required by FastAPI for form/file parsing (OAuth2PasswordRequestForm in /auth/login)."
+      },
+      {
+        "name": "email-validator",
+        "version": "~=2.2",
+        "reason": "Backs Pydantic's EmailStr."
+      },
+      {
+        "name": "uvicorn[standard]",
+        "version": "~=0.34",
+        "reason": "ASGI server with httptools/uvloop/websockets; used as the worker class behind gunicorn in prod and as the dev server with --reload."
+      },
+      {
+        "name": "gunicorn",
+        "version": "~=23.0",
+        "reason": "Process manager in prod. Run: gunicorn app.main:app -k uvicorn.workers.UvicornWorker -w <workers> --bind 0.0.0.0:8000."
+      },
+      {
+        "name": "httpx",
+        "version": "~=0.28",
+        "reason": "Both the in-process test client (AsyncClient + ASGITransport(app=app)) and any outbound HTTP calls. TestClient still works but AsyncClient is the modern path."
+      },
+      {
+        "name": "structlog",
+        "version": "~=24.4",
+        "reason": "Structured JSON logs in prod, pretty in dev. Wires cleanly into uvicorn/gunicorn loggers via dictConfig."
+      },
+      {
+        "name": "tenacity",
+        "version": "~=9.0",
+        "reason": "Retry decorator for DB warm-up on container start and outbound calls."
+      }
+    ],
+    "tooling": [
+      {
+        "name": "uv",
+        "role": "Package + virtualenv + lockfile manager. Replaces pip + pip-tools + poetry; resolves and installs an order of magnitude faster. uv sync / uv run / uv lock."
+      },
+      {
+        "name": "ruff",
+        "role": "Lint + format (replaces black, isort, flake8, pyupgrade). Configure [tool.ruff.lint] with E,F,I,B,UP,SIM,RUF,ASYNC and target-version=py312."
+      },
+      {
+        "name": "pyright",
+        "role": "Static type checker. Faster than mypy and the de facto choice for FastAPI/SQLAlchemy 2 typed code. strict mode on app/, basic on tests/."
+      },
+      {
+        "name": "mypy",
+        "role": "Optional second type checker for CI parity; SQLAlchemy ships its own mypy plugin but with 2.0 typed Mapped[] you usually do not need it."
+      },
+      {
+        "name": "pytest",
+        "role": "Test runner. Plugins: pytest-asyncio (mode=auto), pytest-cov, pytest-randomly, anyio."
+      },
+      {
+        "name": "pre-commit",
+        "role": "Git hooks running ruff + pyright + small fixers (trailing whitespace, end-of-file, check-merge-conflict)."
+      },
+      {
+        "name": "docker / docker compose",
+        "role": "Local Postgres-swap parity, prod image. Multi-stage Dockerfile: builder installs uv + deps, runtime is python:3.12-slim with a non-root user."
+      },
+      {
+        "name": "nginx",
+        "role": "TLS termination + static assets (frontend dist) + reverse proxy to gunicorn on a unix socket or 127.0.0.1:8000. proxy_set_header Host/X-Forwarded-* and trust them via FastAPI's ProxyHeadersMiddleware (uvicorn --proxy-headers)."
+      },
+      {
+        "name": "Makefile",
+        "role": "One-line entrypoints: make dev (uvicorn --reload), make test, make migrate, make revision m='msg', make lint, make typecheck."
+      }
+    ],
+    "pitfalls": [
+      "Alembic + async engine: do NOT call engine.connect() directly in env.py. Use async_engine_from_config and run migrations through connection.run_sync(lambda sync_conn: context.configure(connection=sync_conn, target_metadata=Base.metadata) or context.run_migrations()). Forgetting this is the #1 reason 'alembic upgrade head' hangs or crashes with 'awaited a sync function'.",
+      "Alembic autogenerate only sees models that have been imported. Add explicit imports in alembic/env.py (e.g. from app.models import user, link, tag  # noqa: F401) or import a models package __init__ that re-exports them, otherwise tables silently disappear from migrations.",
+      "Always set a stable naming_convention on your MetaData (ix/uq/ck/fk/pk patterns) BEFORE the first migration. Adding it later causes Alembic to want to rename every constraint, which is destructive on SQLite (no DROP CONSTRAINT).",
+      "SQLite + FastAPI concurrency: SQLite serializes writers. Enable WAL with a 'connect' event listener that runs PRAGMA journal_mode=WAL, PRAGMA synchronous=NORMAL, PRAGMA foreign_keys=ON, PRAGMA busy_timeout=5000. WAL alone does not give you concurrent writers, only concurrent readers + one writer.",
+      "aiosqlite passes connect_args={'check_same_thread': False} implicitly, but you still need a single AsyncEngine reused across the app. Creating an engine per request leaks file handles and defeats WAL.",
+      "SQLite migrations: Alembic runs ALTER TABLE inside a batch (render_as_batch=True in env.py context.configure). Without batch mode, anything beyond ADD COLUMN fails on SQLite. Set render_as_batch=True when the dialect is sqlite.",
+      "Pydantic v2 migration gotchas: orm_mode -> from_attributes; .dict() -> .model_dump(); .json() -> .model_dump_json(); class Config -> model_config = ConfigDict(...); @validator -> @field_validator with @classmethod; @root_validator -> @model_validator(mode='before'|'after'); arbitrary_types_allowed lives in ConfigDict; allow_population_by_field_name -> populate_by_name.",
+      "Pydantic v2 strictness: int/str coercion is stricter. A query param typed as int will reject '1.0'. Use Annotated[int, BeforeValidator(...)] if you need legacy lenience.",
+      "FastAPI Depends + SQLAlchemy AsyncSession: yield the session and wrap the body in try/except so you commit on success and rollback on exception, then close in finally. Letting an exception escape without rollback poisons the session for any code that re-uses it (e.g. background tasks).",
+      "Do not share an AsyncSession across requests or across asyncio.gather concurrent branches. SQLAlchemy AsyncSession is not safe for concurrent use; use one session per task and async_sessionmaker(expire_on_commit=False) so objects survive the commit boundary.",
+      "bcrypt 72-byte limit: bcrypt silently truncates passwords longer than 72 bytes. Either reject or pre-hash with SHA-256 before bcrypt; document the choice. Passlib emits a noisy '__about__' warning with bcrypt 4.x — another reason to call bcrypt directly.",
+      "JWT: pin the algorithm list on decode (algorithms=['HS256']). Never accept 'none'. Rotate SECRET_KEY out of source and read via pydantic-settings; treat it as a secret in CI.",
+      "gunicorn workers for async: the classic (2*CPU)+1 rule is for sync workers. With UvicornWorker, start with workers = CPU count (or even 1-2 for IO-bound + SQLite, since SQLite serializes writes anyway). More workers do not help SQLite throughput.",
+      "uvicorn behind nginx: pass --proxy-headers and set forwarded_allow_ips, otherwise request.client.host and url scheme will be wrong, which breaks redirect_uri building and rate limiting by IP.",
+      "CORS in a monorepo dev setup: Vite runs on :5173, FastAPI on :8000. Configure CORSMiddleware with explicit origins (not ['*']) once you send cookies/Authorization. Wildcard + credentials is rejected by browsers.",
+      "Don't put models or schemas in main.py — circular imports bite hard once Alembic env.py imports app.db.base. Keep Base in app.db.base, models import Base, and an aggregator (app.models.__init__) re-exports them for Alembic.",
+      "src-layout means tests must be run with the package installed (uv pip install -e . or uv run pytest with [tool.hatch.build.targets.wheel] packages=['src/app']). Otherwise 'from app...' fails. Configure pyproject's build-system + [tool.pytest.ini_options] pythonpath = ['src'] as a belt-and-suspenders.",
+      "Pydantic Settings + .env: the validation runs at import time. A typo in .env will blow up uvicorn before the first request, which is good — but means you must keep .env.example in sync and document required vars.",
+      "Async test fixtures: use pytest-asyncio with asyncio_mode = 'auto' in pyproject and create a fresh in-memory SQLite (sqlite+aiosqlite:///:memory:) per test, OR use a file DB with a transaction-per-test rollback fixture. In-memory + multiple connections do not share data unless you use a shared-cache URI.",
+      "Don't call Base.metadata.create_all in production startup if Alembic owns the schema. Pick one source of truth. create_all is fine for tests; everywhere else, run alembic upgrade head as a deploy step.",
+      "python-jose vs PyJWT: many older tutorials still recommend python-jose. It has unresolved CVEs in transitive deps and effectively no maintainer. Use PyJWT.",
+      "Lifespan vs on_event: @app.on_event('startup'/'shutdown') is deprecated. Use the lifespan async context manager passed to FastAPI(lifespan=...). Put engine disposal there: await engine.dispose() on shutdown."
+    ],
+    "sources": [
+      "https://fastapi.tiangolo.com/tutorial/bigger-applications/",
+      "https://fastapi.tiangolo.com/advanced/settings/",
+      "https://fastapi.tiangolo.com/deployment/server-workers/",
+      "https://github.com/fastapi/full-stack-fastapi-template",
+      "https://docs.sqlalchemy.org/en/20/orm/quickstart.html",
+      "https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html",
+      "https://docs.sqlalchemy.org/en/20/dialects/sqlite.html",
+      "https://alembic.sqlalchemy.org/en/latest/cookbook.html#programmatic-api-use-connection-sharing-with-asyncio",
+      "https://alembic.sqlalchemy.org/en/latest/batch.html",
+      "https://docs.pydantic.dev/latest/migration/",
+      "https://docs.pydantic.dev/latest/concepts/models/",
+      "https://docs.pydantic.dev/latest/concepts/pydantic_settings/",
+      "https://www.sqlite.org/wal.html",
+      "https://docs.gunicorn.org/en/stable/design.html",
+      "https://www.uvicorn.org/deployment/",
+      "https://docs.astral.sh/uv/",
+      "https://docs.astral.sh/ruff/",
+      "https://microsoft.github.io/pyright/",
+      "https://pyjwt.readthedocs.io/en/stable/",
+      "https://github.com/zhanymkanov/fastapi-best-practices"
+    ]
+  }
+}
