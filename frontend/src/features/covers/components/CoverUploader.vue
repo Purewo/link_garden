@@ -14,7 +14,7 @@
  *     after the card is created.
  */
 import { computed, ref, toRef, watch } from 'vue'
-import { useCoverUpload } from '@/shared/composables/useCoverUpload'
+import { useCoverUpload } from '@/features/covers/composables/useCoverUpload'
 
 const props = withDefaults(
   defineProps<{

@@ -37,7 +37,7 @@ async def list_distinct_tags(
         stable across requests and DB backends.
     """
 
-    stmt = select(Card.tags).order_by(Card.id)
+    stmt = select(Card.tags).order_by(Card.created_at.asc(), Card.id.asc())
     if not include_archived:
         stmt = stmt.where(Card.archived.is_(False))
 

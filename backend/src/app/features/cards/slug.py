@@ -17,7 +17,7 @@ import uuid
 from typing import Final
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.features.cards.models import Card
@@ -102,7 +102,7 @@ async def unique_slug(
 
     stmt = select(Card.slug).where(
         Card.archived.is_(False),
-        Card.slug.like(f"{base}%"),
+        or_(Card.slug == base, Card.slug.like(f"{base}-%")),
     )
     if exclude_id is not None:
         stmt = stmt.where(Card.id != exclude_id)

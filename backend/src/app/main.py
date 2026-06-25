@@ -23,6 +23,7 @@ import structlog
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import Settings, get_settings
 from app.core.db import dispose_engine
@@ -141,13 +142,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(env=settings.APP_ENV)
 
+    # In production, suppress the public docs surface — the live OpenAPI
+    # blueprint should not be discoverable through Google/random scans.
+    docs_url: str | None = "/api/v1/docs"
+    redoc_url: str | None = "/api/v1/redoc"
+    if settings.APP_ENV == "prod":
+        docs_url = None
+        redoc_url = None
+
     app = FastAPI(
         title="LinkGarden API",
         version="0.1.0",
         lifespan=_lifespan,
         openapi_url="/api/v1/openapi.json",
-        docs_url="/api/v1/docs",
-        redoc_url="/api/v1/redoc",
+        docs_url=docs_url,
+        redoc_url=redoc_url,
     )
 
     # Quiet uvicorn's default access logger; structlog covers it via the
@@ -174,7 +183,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # 2. Versioned router.
     app.include_router(_build_v1_router())
 
-    # 3. Legacy 308 shim registered last.
+    # 3. Static covers mount. Production sets the same path under nginx;
+    #    in dev and prod the URL prefix is identical so frontend code does
+    #    not need an environment switch.
+    covers_dir = settings.covers_dir
+    covers_dir.mkdir(parents=True, exist_ok=True)
+    app.mount(
+        settings.COVERS_PUBLIC_PREFIX,
+        StaticFiles(directory=covers_dir),
+        name="covers",
+    )
+
+    # 4. Legacy 308 shim registered last.
     _register_legacy_shim(app)
 
     return app

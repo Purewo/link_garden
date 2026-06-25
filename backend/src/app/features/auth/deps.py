@@ -55,13 +55,14 @@ async def _get_current_user(
         raise Unauthorized("unauthenticated", "Authentication required.")
 
     # `decode_jwt` already raises Unauthorized on signature/expiry failure
-    # per its contract in core.security. We re-wrap any other exception to
-    # avoid leaking JWT internals through the API.
+    # per its contract in core.security. We re-wrap any other exception
+    # raised *by the decoder itself* so JWT internals never leak. DB
+    # errors propagate untouched so the global handler renders a 500.
     try:
         claims = decode_jwt(token)
     except Unauthorized:
         raise
-    except Exception as exc:  # noqa: BLE001 — defense in depth
+    except Exception as exc:  # noqa: BLE001 — defense in depth around decode_jwt
         raise Unauthorized("unauthenticated", "Authentication required.") from exc
 
     sub = claims.get("sub")
@@ -93,6 +94,10 @@ async def _require_admin(
     if user.role != "admin":
         raise Forbidden("forbidden", "Admin role required.")
     return user
+
+
+# Public re-export so cross-feature routers don't import the underscored name.
+require_admin = _require_admin
 
 
 # These are the two symbols the router signatures consume. Keeping them as

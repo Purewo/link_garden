@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
@@ -24,21 +24,27 @@ if TYPE_CHECKING:
     from app.features.auth.models import User
 
 
-router = APIRouter(tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/login", response_model=TokenResponse, status_code=200)
 async def login(
     payload: LoginRequest,
+    request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> TokenResponse:
     """Validate credentials and return a JWT.
 
     Wrong credentials raise 401 `invalid_credentials`; oversized payloads
-    are rejected with 422 by Pydantic before this handler runs.
+    are rejected with 422 by Pydantic before this handler runs. Repeated
+    failures from the same (username, client_ip) bucket trip a 429
+    ``too_many_attempts`` brake.
     """
 
-    user = await authenticate(session, payload.username, payload.password)
+    client_ip = request.client.host if request.client else ""
+    user = await authenticate(
+        session, payload.username, payload.password, client_ip=client_ip
+    )
     return mint_token(user)
 
 

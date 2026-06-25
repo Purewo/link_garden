@@ -179,7 +179,7 @@ async def test_me_with_expired_token_is_401(client, session):
     user = await _seed_user(session)
     # Mint a token with a negative TTL so it's already expired.
     expired = encode_jwt({"sub": str(user.id), "username": user.username,
-                          "role": user.role}, ttl=-10)
+                          "role": user.role}, ttl_seconds=-10)
 
     resp = await client.get(
         "/api/v1/auth/me",
@@ -196,7 +196,7 @@ async def test_me_with_unknown_user_is_401(client):
 
     token = encode_jwt(
         {"sub": str(uuid4()), "username": "ghost", "role": "admin"},
-        ttl=60,
+        ttl_seconds=60,
     )
     resp = await client.get(
         "/api/v1/auth/me",
@@ -215,10 +215,10 @@ async def test_require_admin_blocks_non_admin(client, session):
     must 403, not silently pass. We assert via a temporary router because
     no `/admin/*` endpoint is wired up by B4 itself.
     """
-    from fastapi import FastAPI
+    from fastapi import Depends, FastAPI
     from httpx import ASGITransport, AsyncClient
 
-    from app.features.auth.deps import AdminUser
+    from app.features.auth.deps import _require_admin
     from app.core.errors import register_handlers
     from app.core.security import encode_jwt
 
@@ -227,7 +227,7 @@ async def test_require_admin_blocks_non_admin(client, session):
                               password="readonly1", role="viewer")
     token = encode_jwt({"sub": str(viewer.id),
                         "username": viewer.username,
-                        "role": viewer.role}, ttl=60)
+                        "role": viewer.role}, ttl_seconds=60)
 
     # Stand up a tiny app that mounts a single admin-gated route. We reuse
     # the same session dep so the user lookup hits the test DB.
@@ -241,7 +241,7 @@ async def test_require_admin_blocks_non_admin(client, session):
     sub_app.dependency_overrides[get_session] = _session_dep
 
     @sub_app.get("/admin-only")
-    async def admin_only(_user: AdminUser):
+    async def admin_only(_user=Depends(_require_admin)):  # noqa: ANN001
         return {"ok": True}
 
     transport = ASGITransport(app=sub_app)

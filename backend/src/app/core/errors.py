@@ -16,6 +16,7 @@ from typing import Any, ClassVar, Final, Literal
 
 import structlog
 from fastapi import FastAPI, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
@@ -190,9 +191,10 @@ async def _validation_exception_handler(
         http_status=status.HTTP_422_UNPROCESSABLE_ENTITY,
         error=human,
         code="validation_failed",
-        # ``exc.errors()`` may include non-JSON ``ctx`` payloads; cast through
-        # ``list[dict[str, Any]]`` to keep mypy/pyright honest.
-        detail=[dict(err) for err in errors],
+        # ``exc.errors()`` may include non-JSON ``ctx`` payloads (e.g. a live
+        # ``ValueError`` instance from a Pydantic v2 validator). Route them
+        # through ``jsonable_encoder`` so JSONResponse can serialize.
+        detail=jsonable_encoder(errors),
     )
 
 

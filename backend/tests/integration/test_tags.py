@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
@@ -68,6 +69,7 @@ def _make_card(
     tags: list[str],
     archived: bool = False,
     category: str = "external",
+    created_at: datetime | None = None,
 ) -> Card:
     """Build a minimal valid ``Card`` row for the tag aggregation tests."""
 
@@ -84,7 +86,18 @@ def _make_card(
         body_html=None,
         tags=tags,
         archived=archived,
+        created_at=created_at or datetime.now(UTC),
     )
+
+
+# Constant base timestamp; tests offset by N seconds to pin row order without
+# relying on the DB's server-side default (which can collapse rows added in
+# the same transaction onto the same instant).
+_BASE_TS = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def _ts(offset: int) -> datetime:
+    return _BASE_TS + timedelta(seconds=offset)
 
 
 # ---------------------------------------------------------------------------
@@ -107,9 +120,21 @@ async def test_list_distinct_tags_distinct_and_sorted(
 
     session.add_all(
         [
-            _make_card(title="Alpha", tags=["python", "FastAPI", "sql"]),
-            _make_card(title="Beta", tags=["FastAPI", "Vue"]),
-            _make_card(title="Gamma", tags=["python", "vue", "  "]),
+            _make_card(
+                title="Alpha",
+                tags=["python", "FastAPI", "sql"],
+                created_at=_ts(0),
+            ),
+            _make_card(
+                title="Beta",
+                tags=["FastAPI", "Vue"],
+                created_at=_ts(1),
+            ),
+            _make_card(
+                title="Gamma",
+                tags=["python", "vue", "  "],
+                created_at=_ts(2),
+            ),
         ]
     )
     await session.commit()
@@ -128,8 +153,17 @@ async def test_list_distinct_tags_excludes_archived_by_default(
 
     session.add_all(
         [
-            _make_card(title="Live", tags=["python", "fastapi"]),
-            _make_card(title="Old", tags=["legacy", "deprecated"], archived=True),
+            _make_card(
+                title="Live",
+                tags=["python", "fastapi"],
+                created_at=_ts(0),
+            ),
+            _make_card(
+                title="Old",
+                tags=["legacy", "deprecated"],
+                archived=True,
+                created_at=_ts(1),
+            ),
         ]
     )
     await session.commit()
@@ -148,8 +182,17 @@ async def test_list_distinct_tags_include_archived(
 
     session.add_all(
         [
-            _make_card(title="Live", tags=["python", "fastapi"]),
-            _make_card(title="Old", tags=["legacy", "Python"], archived=True),
+            _make_card(
+                title="Live",
+                tags=["python", "fastapi"],
+                created_at=_ts(0),
+            ),
+            _make_card(
+                title="Old",
+                tags=["legacy", "Python"],
+                archived=True,
+                created_at=_ts(1),
+            ),
         ]
     )
     await session.commit()
@@ -166,9 +209,17 @@ async def test_list_distinct_tags_handles_empty_and_whitespace(
 
     session.add_all(
         [
-            _make_card(title="Empty", tags=[]),
-            _make_card(title="Whitespace", tags=["  ", "", "\t"]),
-            _make_card(title="Real", tags=["  trim-me  ", "keep"]),
+            _make_card(title="Empty", tags=[], created_at=_ts(0)),
+            _make_card(
+                title="Whitespace",
+                tags=["  ", "", "\t"],
+                created_at=_ts(1),
+            ),
+            _make_card(
+                title="Real",
+                tags=["  trim-me  ", "keep"],
+                created_at=_ts(2),
+            ),
         ]
     )
     await session.commit()

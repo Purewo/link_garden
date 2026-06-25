@@ -8,24 +8,27 @@
 The DB schema is brought up via ``Base.metadata.create_all`` (synchronous run
 through ``connection.run_sync``) — Alembic-driven migrations are validated by
 B2's test suite separately. The engine is per-session because each test is
-isolated by truncating tables in the ``db_session`` fixture.
+isolated by truncating tables in the ``session`` fixture.
 """
 
 from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+from uuid import uuid4
 
 # --- Environment defaults: applied BEFORE the app or its settings get imported.
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault(
     "JWT_SECRET",
     # Long-enough placeholder that satisfies the Settings min_length=32 check.
-    "test-jwt-secret-please-do-not-use-in-prod-12345",
+    # Avoid the literal example sentinels rejected by the placeholder validator.
+    "Z9mK0vQ8tP1wL3xR7yS5jH2nB4cF6aE0G8hT_secret_for_tests_only",
 )
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///:memory:")
 os.environ.setdefault("ALLOWED_ORIGINS", "http://testserver")
-os.environ.setdefault("LG_ADMIN_PASSWORD", "test-admin-pass")
+os.environ.setdefault("LG_ADMIN_PASSWORD", "ZkP9qT3hLm2vW7xR_test_admin")
 
 import pytest
 import pytest_asyncio
@@ -40,6 +43,10 @@ from sqlalchemy.ext.asyncio import (
 from app.core import db as core_db
 from app.core.config import get_settings
 from app.core.db import Base, configure_engine, dispose_engine
+from app.core.security import hash_password
+from app.features.auth.models import User
+from app.features.auth.repo import UserRepository
+from app.features.auth.service import mint_token
 from app.main import create_app
 
 
@@ -76,14 +83,54 @@ async def engine() -> AsyncIterator[AsyncEngine]:
 
 
 @pytest_asyncio.fixture()
-async def db_session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
-    """Async session bound to the test engine."""
+async def session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
+    """Async session bound to the test engine.
+
+    Renamed from ``db_session`` so the auth + cards suites can both depend on
+    a single canonical fixture name.
+    """
 
     factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
         bind=engine, expire_on_commit=False, autoflush=False, class_=AsyncSession
     )
-    async with factory() as session:
-        yield session
+    async with factory() as sess:
+        yield sess
+
+
+# Back-compat alias so any straggling caller of ``db_session`` keeps working.
+@pytest_asyncio.fixture()
+async def db_session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
+    """Alias for ``session`` so legacy tests still resolve their fixture name."""
+
+    factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
+        bind=engine, expire_on_commit=False, autoflush=False, class_=AsyncSession
+    )
+    async with factory() as sess:
+        yield sess
+
+
+@pytest_asyncio.fixture()
+async def admin_user(session: AsyncSession) -> User:
+    """Insert a seeded admin user and return the persisted row."""
+
+    user = User(
+        id=uuid4(),
+        username="admin",
+        password_hash=hash_password("admin-test-password"),
+        role="admin",
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    await UserRepository(session).insert(user)
+    await session.commit()
+    return user
+
+
+@pytest_asyncio.fixture()
+async def admin_token(admin_user: User) -> str:
+    """Return a ready-to-use ``Authorization`` header value for the admin."""
+
+    return f"Bearer {mint_token(admin_user).access_token}"
 
 
 @pytest_asyncio.fixture()

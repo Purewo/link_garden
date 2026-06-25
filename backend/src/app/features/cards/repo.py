@@ -137,12 +137,12 @@ class CardRepository:
         """Persist a new card and return the managed instance.
 
         Caller is responsible for filling every required field, including
-        ``slug`` (already de-collided via :func:`unique_slug`).
+        ``slug`` (already de-collided via :func:`unique_slug`). Commits are
+        managed by the ``get_session`` dependency, not the repo.
         """
 
         self.session.add(card)
         await self.session.flush()
-        await self.session.commit()
         await self.session.refresh(card)
         return card
 
@@ -150,12 +150,12 @@ class CardRepository:
         """Persist a mutated managed card.
 
         The card must already be attached to ``self.session`` (e.g. came
-        from ``get_by_id``); we just flush + commit + refresh so the caller
-        sees server-side ``updated_at``.
+        from ``get_by_id``); we just flush + refresh so the caller
+        sees server-side ``updated_at``. The transaction commit happens
+        in ``get_session`` on a successful response.
         """
 
         await self.session.flush()
-        await self.session.commit()
         await self.session.refresh(card)
         return card
 
@@ -178,8 +178,7 @@ class CardRepository:
         """Hard-delete a card by primary key.
 
         Cover-file cleanup is the service layer's concern — the repository
-        only owns SQL.
+        only owns SQL. The transaction commit happens in ``get_session``.
         """
 
         await self.session.execute(sa_delete(Card).where(Card.id == card.id))
-        await self.session.commit()

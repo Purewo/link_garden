@@ -115,7 +115,7 @@ vi.mock('vue-router', () => ({
 // --- Imports under test ---------------------------------------------------
 
 import { useCardForm } from '@/features/cards/composables/useCardForm'
-import { useCoverUpload } from '@/shared/composables/useCoverUpload'
+import { useCoverUpload } from '@/features/covers/composables/useCoverUpload'
 import AdminCardTable from '@/features/cards/components/AdminCardTable.vue'
 
 // --- Helpers --------------------------------------------------------------

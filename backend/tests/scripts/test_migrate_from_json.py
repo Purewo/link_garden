@@ -408,7 +408,7 @@ async def test_main_writes_report_html(
     monkeypatch.setattr(db_module, "_session_factory", session_factory, raising=False)
 
     fake_settings = Settings(  # type: ignore[call-arg]
-        JWT_SECRET="x" * 32,
+        JWT_SECRET="Z9mK0vQ8tP1wL3xR7yS5jH2nB4cF6aE0G8hT_secret_for_tests_only",
         DATABASE_URL="sqlite+aiosqlite:///:memory:",
     )
     monkeypatch.setattr(migrate_from_json, "_resolve_render_markdown", lambda: _identity_render)

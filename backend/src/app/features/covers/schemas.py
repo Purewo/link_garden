@@ -3,16 +3,17 @@
 Cover uploads are the one success-bodied endpoint that returns ``ok: true``
 alongside the resource (per §3.9 of the architecture spec) so the frontend
 can flash a toast without an extra GET. The embedded ``card`` payload uses
-the cards feature's :class:`CardRead` shape; we accept ``Any`` here to keep
-this module's import graph independent of the cards module (the integrator
-re-types at the router layer if desired).
+the cards feature's :class:`CardRead` shape so the OpenAPI schema typing
+flows through ``openapi-typescript`` cleanly.
 """
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.features.cards.schemas import CardRead
 
 
 class CoverUploadResponse(BaseModel):
@@ -26,8 +27,7 @@ class CoverUploadResponse(BaseModel):
         width: Decoded pixel width (post-Pillow verify).
         height: Decoded pixel height.
         bytes: Final on-disk size in bytes.
-        card: The updated card row (``CardRead``); typed as ``Any`` here to
-            avoid a hard import on the cards module.
+        card: The updated card row, projected through :class:`CardRead`.
     """
 
     model_config = ConfigDict(
@@ -41,7 +41,7 @@ class CoverUploadResponse(BaseModel):
     width: int = Field(ge=1)
     height: int = Field(ge=1)
     bytes: int = Field(ge=1)
-    card: Any = None
+    card: CardRead
 
 
 __all__ = ["CoverUploadResponse"]

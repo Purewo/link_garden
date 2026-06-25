@@ -1,69 +1,262 @@
 {
   "components": {
     "schemas": {
+      "Body_post_cover_api_v1_covers_post": {
+        "properties": {
+          "card_id": {
+            "format": "uuid",
+            "title": "Card Id",
+            "type": "string"
+          },
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file",
+          "card_id"
+        ],
+        "title": "Body_post_cover_api_v1_covers_post",
+        "type": "object"
+      },
       "CardArchive": {
         "additionalProperties": false,
+        "description": "Setter for the archive endpoint. ``archived`` is required (no default).\n\nRemoving the legacy \"empty body archives\" surprise from phase 1 is the\nwhole point of the explicit required field.",
         "properties": {
-          "archived": { "type": "boolean" }
+          "archived": {
+            "title": "Archived",
+            "type": "boolean"
+          }
         },
-        "required": ["archived"],
+        "required": [
+          "archived"
+        ],
         "title": "CardArchive",
         "type": "object"
       },
       "CardCreate": {
         "additionalProperties": false,
+        "description": "Admin publish payload.\n\nValidates ``external ⇒ url`` and ``local ⇒ body`` after the field-level\ncoercions run, so a payload with both/neither is rejected before the\nservice is invoked.",
         "properties": {
-          "body": { "type": ["string", "null"] },
-          "category": { "enum": ["external", "local"], "type": "string" },
-          "cover": { "type": ["string", "null"] },
-          "group": {
-            "enum": ["技术类", "随笔类", "生活类", null],
-            "type": ["string", "null"]
+          "body": {
+            "anyOf": [
+              {
+                "maxLength": 262144,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
           },
-          "slug": { "type": ["string", "null"] },
-          "summary": { "default": "", "type": "string" },
+          "category": {
+            "enum": [
+              "external",
+              "local"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "cover": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "enum": [
+                  "技术类",
+                  "随笔类",
+                  "生活类"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
           "tags": {
-            "default": [],
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
             "type": "array"
           },
-          "title": { "type": "string" },
-          "url": { "type": ["string", "null"] }
+          "title": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
         },
-        "required": ["category", "title"],
+        "required": [
+          "title",
+          "category"
+        ],
         "title": "CardCreate",
         "type": "object"
       },
       "CardDetail": {
         "additionalProperties": false,
+        "description": "Detail read shape including raw body and rendered HTML.\n\n``body`` and ``body_html`` are only populated when ``category == 'local'``\nso external cards stay light over the wire.",
         "properties": {
-          "archived": { "type": "boolean" },
-          "body": { "type": ["string", "null"] },
-          "body_html": { "type": ["string", "null"] },
-          "category": { "enum": ["external", "local"], "type": "string" },
-          "cover": { "type": ["string", "null"] },
-          "created_at": { "format": "date-time", "type": "string" },
-          "group": {
-            "enum": ["技术类", "随笔类", "生活类", null],
-            "type": ["string", "null"]
+          "archived": {
+            "default": false,
+            "title": "Archived",
+            "type": "boolean"
           },
-          "id": { "format": "uuid", "type": "string" },
-          "slug": { "type": "string" },
-          "summary": { "type": "string" },
-          "tags": { "items": { "type": "string" }, "type": "array" },
-          "title": { "type": "string" },
-          "updated_at": { "format": "date-time", "type": "string" },
-          "url": { "type": ["string", "null"] }
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "body_html": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body Html"
+          },
+          "category": {
+            "enum": [
+              "external",
+              "local"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "cover": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "enum": [
+                  "技术类",
+                  "随笔类",
+                  "生活类"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
         },
         "required": [
-          "archived",
-          "category",
-          "created_at",
           "id",
           "slug",
-          "summary",
-          "tags",
           "title",
+          "category",
+          "created_at",
           "updated_at"
         ],
         "title": "CardDetail",
@@ -71,62 +264,186 @@
       },
       "CardListItem": {
         "additionalProperties": false,
+        "description": "List-row projection of a card. Used by ``GET /cards``.",
         "properties": {
-          "archived": { "type": "boolean" },
-          "category": { "enum": ["external", "local"], "type": "string" },
-          "cover": { "type": ["string", "null"] },
-          "created_at": { "format": "date-time", "type": "string" },
-          "group": {
-            "enum": ["技术类", "随笔类", "生活类", null],
-            "type": ["string", "null"]
+          "archived": {
+            "default": false,
+            "title": "Archived",
+            "type": "boolean"
           },
-          "id": { "format": "uuid", "type": "string" },
-          "slug": { "type": "string" },
-          "summary": { "type": "string" },
-          "tags": { "items": { "type": "string" }, "type": "array" },
-          "title": { "type": "string" }
+          "category": {
+            "enum": [
+              "external",
+              "local"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "cover": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "enum": [
+                  "技术类",
+                  "随笔类",
+                  "生活类"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
         },
         "required": [
-          "archived",
-          "category",
-          "created_at",
           "id",
           "slug",
-          "summary",
-          "tags",
-          "title"
+          "title",
+          "category",
+          "created_at"
         ],
         "title": "CardListItem",
         "type": "object"
       },
       "CardRead": {
         "additionalProperties": false,
+        "description": "Full read shape minus body/body_html. Returned by archive endpoint.",
         "properties": {
-          "archived": { "type": "boolean" },
-          "category": { "enum": ["external", "local"], "type": "string" },
-          "cover": { "type": ["string", "null"] },
-          "created_at": { "format": "date-time", "type": "string" },
-          "group": {
-            "enum": ["技术类", "随笔类", "生活类", null],
-            "type": ["string", "null"]
+          "archived": {
+            "default": false,
+            "title": "Archived",
+            "type": "boolean"
           },
-          "id": { "format": "uuid", "type": "string" },
-          "slug": { "type": "string" },
-          "summary": { "type": "string" },
-          "tags": { "items": { "type": "string" }, "type": "array" },
-          "title": { "type": "string" },
-          "updated_at": { "format": "date-time", "type": "string" },
-          "url": { "type": ["string", "null"] }
+          "category": {
+            "enum": [
+              "external",
+              "local"
+            ],
+            "title": "Category",
+            "type": "string"
+          },
+          "cover": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "enum": [
+                  "技术类",
+                  "随笔类",
+                  "生活类"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "summary": {
+            "default": "",
+            "title": "Summary",
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tags",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
         },
         "required": [
-          "archived",
-          "category",
-          "created_at",
           "id",
           "slug",
-          "summary",
-          "tags",
           "title",
+          "category",
+          "created_at",
           "updated_at"
         ],
         "title": "CardRead",
@@ -134,189 +451,418 @@
       },
       "CardUpdate": {
         "additionalProperties": false,
+        "description": "Admin partial update payload.\n\nEvery field is optional. Omitted fields are preserved by the service so a\nPUT with only ``{title: '…'}`` no longer wipes ``summary``/``cover`` — a\nfix for a documented P1 bug from phase 1.\n\nThe category/url/body coupling is re-checked against the merged result in\nthe service layer, since this schema cannot see the current row.",
         "properties": {
-          "body": { "type": ["string", "null"] },
-          "category": { "enum": ["external", "local"], "type": "string" },
-          "cover": { "type": ["string", "null"] },
-          "group": {
-            "enum": ["技术类", "随笔类", "生活类", null],
-            "type": ["string", "null"]
+          "body": {
+            "anyOf": [
+              {
+                "maxLength": 262144,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
           },
-          "slug": { "type": ["string", "null"] },
-          "summary": { "type": "string" },
-          "tags": { "items": { "type": "string" }, "type": "array" },
-          "title": { "type": "string" },
-          "url": { "type": ["string", "null"] }
+          "category": {
+            "anyOf": [
+              {
+                "enum": [
+                  "external",
+                  "local"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "cover": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "enum": [
+                  "技术类",
+                  "随笔类",
+                  "生活类"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slug"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "tags": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tags"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "maxLength": 2048,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
         },
         "title": "CardUpdate",
         "type": "object"
       },
       "CoverUploadResponse": {
         "additionalProperties": false,
+        "description": "Response body for ``POST /api/v1/covers``.\n\nAttributes:\n    ok: Constant ``True`` so success/failure can be branched on a single\n        field without inspecting status codes.\n    url: Public URL of the stored cover (``COVERS_PUBLIC_PREFIX`` +\n        ``/{card_id}.{ext}`` + cache-buster ``?v=<unix-ts>``).\n    width: Decoded pixel width (post-Pillow verify).\n    height: Decoded pixel height.\n    bytes: Final on-disk size in bytes.\n    card: The updated card row, projected through :class:`CardRead`.",
         "properties": {
-          "bytes": { "type": "integer" },
-          "card": { "$ref": "#/components/schemas/CardRead" },
-          "height": { "type": "integer" },
-          "ok": { "const": true, "type": "boolean" },
-          "url": { "type": "string" },
-          "width": { "type": "integer" }
+          "bytes": {
+            "minimum": 1.0,
+            "title": "Bytes",
+            "type": "integer"
+          },
+          "card": {
+            "$ref": "#/components/schemas/CardRead"
+          },
+          "height": {
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "ok": {
+            "const": true,
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "url": {
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          },
+          "width": {
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
         },
-        "required": ["bytes", "card", "height", "ok", "url", "width"],
+        "required": [
+          "url",
+          "width",
+          "height",
+          "bytes",
+          "card"
+        ],
         "title": "CoverUploadResponse",
         "type": "object"
       },
-      "ErrorEnvelope": {
-        "additionalProperties": false,
+      "HTTPValidationError": {
         "properties": {
-          "code": { "type": "string" },
-          "detail": { "type": ["array", "null"], "items": { "type": "object" } },
-          "error": { "type": "string" },
-          "ok": { "const": false, "type": "boolean" }
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
         },
-        "required": ["code", "error", "ok"],
-        "title": "ErrorEnvelope",
+        "title": "HTTPValidationError",
         "type": "object"
       },
       "LoginRequest": {
         "additionalProperties": false,
+        "description": "Body of `POST /api/v1/auth/login`.\n\nBounds match the user table widths in §3.3 so over-long inputs are\nrejected with a 422 before they reach bcrypt (which itself truncates at\n72 bytes).",
         "properties": {
-          "password": { "maxLength": 256, "minLength": 1, "type": "string" },
-          "username": { "maxLength": 64, "minLength": 1, "type": "string" }
+          "password": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
         },
-        "required": ["password", "username"],
+        "required": [
+          "username",
+          "password"
+        ],
         "title": "LoginRequest",
         "type": "object"
       },
       "OkResponse": {
         "additionalProperties": false,
-        "properties": { "ok": { "const": true, "type": "boolean" } },
-        "required": ["ok"],
+        "description": "Shape of the bare-acknowledgement success response.",
+        "properties": {
+          "ok": {
+            "const": true,
+            "default": true,
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
         "title": "OkResponse",
         "type": "object"
       },
       "TokenResponse": {
         "additionalProperties": false,
+        "description": "Success body of `POST /api/v1/auth/login`.\n\n`expires_in` is seconds, mirroring the conventional OAuth2 token\nresponse shape so the frontend can store an absolute deadline if it\nwants to.",
         "properties": {
-          "access_token": { "type": "string" },
-          "expires_in": { "type": "integer" },
-          "token_type": { "const": "bearer", "type": "string" },
-          "user": { "$ref": "#/components/schemas/UserRead" }
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "token_type": {
+            "const": "bearer",
+            "default": "bearer",
+            "title": "Token Type",
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserRead"
+          }
         },
-        "required": ["access_token", "expires_in", "token_type", "user"],
+        "required": [
+          "access_token",
+          "expires_in",
+          "user"
+        ],
         "title": "TokenResponse",
         "type": "object"
       },
       "UserRead": {
         "additionalProperties": false,
+        "description": "Public read view of a user row.",
         "properties": {
-          "created_at": { "format": "date-time", "type": "string" },
-          "id": { "format": "uuid", "type": "string" },
-          "role": { "type": "string" },
-          "username": { "type": "string" }
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "username": {
+            "title": "Username",
+            "type": "string"
+          }
         },
-        "required": ["created_at", "id", "role", "username"],
+        "required": [
+          "id",
+          "username",
+          "role",
+          "created_at"
+        ],
         "title": "UserRead",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
         "type": "object"
       }
     }
   },
   "info": {
-    "title": "LinkGarden",
-    "version": "1.0.0"
+    "title": "LinkGarden API",
+    "version": "snapshot"
   },
   "openapi": "3.1.0",
   "paths": {
     "/api/health": {
       "get": {
-        "operationId": "health_root",
+        "description": "Return the liveness envelope ``{\"ok\": true}``.",
+        "operationId": "health_api_health_get",
         "responses": {
           "200": {
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
             },
-            "description": "OK"
+            "description": "Successful Response"
           }
         },
-        "summary": "Health (stable monitor path)"
+        "summary": "Liveness probe",
+        "tags": [
+          "health"
+        ]
       }
     },
     "/api/v1/auth/login": {
       "post": {
-        "operationId": "auth_login",
+        "description": "Validate credentials and return a JWT.\n\nWrong credentials raise 401 `invalid_credentials`; oversized payloads\nare rejected with 422 by Pydantic before this handler runs. Repeated\nfailures from the same (username, client_ip) bucket trip a 429\n``too_many_attempts`` brake.",
+        "operationId": "login_api_v1_auth_login_post",
         "requestBody": {
           "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } }
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
           },
           "required": true
         },
         "responses": {
           "200": {
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/TokenResponse" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
             },
-            "description": "OK"
+            "description": "Successful Response"
           },
-          "401": {
+          "422": {
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
             },
-            "description": "Unauthorized"
+            "description": "Validation Error"
           }
         },
-        "summary": "Login"
+        "summary": "Login",
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/api/v1/auth/me": {
       "get": {
-        "operationId": "auth_me",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/UserRead" } }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [{ "bearer": [] }],
-        "summary": "Current user"
-      }
-    },
-    "/api/v1/cards": {
-      "get": {
-        "operationId": "list_cards",
+        "description": "Return the authenticated user.\n\nUsed by the SPA on boot to validate a persisted token. The dep takes\ncare of 401 paths — by the time we reach the body, `current_user` is\nguaranteed to be a real row.",
+        "operationId": "me_api_v1_auth_me_get",
         "parameters": [
           {
-            "in": "query",
-            "name": "category",
-            "required": false,
-            "schema": { "enum": ["external", "local", null], "type": ["string", "null"] }
-          },
-          {
-            "in": "query",
-            "name": "group",
+            "in": "header",
+            "name": "authorization",
             "required": false,
             "schema": {
-              "enum": ["技术类", "随笔类", "生活类", null],
-              "type": ["string", "null"]
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
             }
-          },
-          {
-            "in": "query",
-            "name": "tag",
-            "required": false,
-            "schema": { "type": ["string", "null"] }
-          },
-          {
-            "in": "query",
-            "name": "q",
-            "required": false,
-            "schema": { "type": ["string", "null"] }
-          },
-          {
-            "in": "query",
-            "name": "include_archived",
-            "required": false,
-            "schema": { "default": false, "type": "boolean" }
           }
         ],
         "responses": {
@@ -324,150 +870,176 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": { "$ref": "#/components/schemas/CardListItem" },
+                  "$ref": "#/components/schemas/UserRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/cards": {
+      "get": {
+        "description": "Return cards matching the query filters. Default sort is ``created_at DESC, id DESC``. Archived cards are excluded unless ``include_archived=true`` is passed.",
+        "operationId": "list_cards_api_v1_cards_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "external",
+                    "local"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "技术类",
+                    "随笔类",
+                    "生活类"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Group"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tag"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CardListItem"
+                  },
+                  "title": "Response List Cards Api V1 Cards Get",
                   "type": "array"
                 }
               }
             },
-            "description": "OK"
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
-        "summary": "List cards"
+        "summary": "List cards",
+        "tags": [
+          "cards"
+        ]
       },
       "post": {
-        "operationId": "create_card",
-        "requestBody": {
-          "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/CardCreate" } }
-          },
-          "required": true
-        },
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/CardDetail" } }
-            },
-            "description": "Created"
-          }
-        },
-        "security": [{ "bearer": [] }],
-        "summary": "Create card"
-      }
-    },
-    "/api/v1/cards/{id}": {
-      "delete": {
-        "operationId": "delete_card",
+        "operationId": "publish_card_api_v1_cards_post",
         "parameters": [
           {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": { "format": "uuid", "type": "string" }
-          }
-        ],
-        "responses": { "204": { "description": "No Content" } },
-        "security": [{ "bearer": [] }],
-        "summary": "Delete card"
-      },
-      "put": {
-        "operationId": "update_card",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": { "format": "uuid", "type": "string" }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/CardUpdate" } }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/CardDetail" } }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [{ "bearer": [] }],
-        "summary": "Update card"
-      }
-    },
-    "/api/v1/cards/{id}/archive": {
-      "patch": {
-        "operationId": "archive_card",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "id",
-            "required": true,
-            "schema": { "format": "uuid", "type": "string" }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": { "schema": { "$ref": "#/components/schemas/CardArchive" } }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/CardRead" } }
-            },
-            "description": "OK"
-          }
-        },
-        "security": [{ "bearer": [] }],
-        "summary": "Archive card"
-      }
-    },
-    "/api/v1/cards/{slug}": {
-      "get": {
-        "operationId": "get_card",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "slug",
-            "required": true,
-            "schema": { "type": "string" }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/CardDetail" } }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
-            },
-            "description": "Not Found"
-          }
-        },
-        "summary": "Get card by slug"
-      }
-    },
-    "/api/v1/covers": {
-      "post": {
-        "operationId": "upload_cover",
-        "requestBody": {
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "additionalProperties": false,
-                "properties": {
-                  "card_id": { "format": "uuid", "type": "string" },
-                  "file": { "format": "binary", "type": "string" }
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "required": ["card_id", "file"],
-                "type": "object"
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CardCreate"
               }
             }
           },
@@ -477,52 +1049,390 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/CoverUploadResponse" }
+                "schema": {
+                  "$ref": "#/components/schemas/CardDetail"
+                }
               }
             },
-            "description": "Created"
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
-        "security": [{ "bearer": [] }],
-        "summary": "Upload cover"
+        "summary": "Publish a new card",
+        "tags": [
+          "cards"
+        ]
       }
     },
-    "/api/v1/health": {
-      "get": {
-        "operationId": "health_v1",
+    "/api/v1/cards/{card_id}": {
+      "delete": {
+        "operationId": "delete_card_api_v1_cards__card_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "card_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Card Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete a card",
+        "tags": [
+          "cards"
+        ]
+      },
+      "put": {
+        "operationId": "update_card_api_v1_cards__card_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "card_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Card Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CardUpdate"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
-              "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } }
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardDetail"
+                }
+              }
             },
-            "description": "OK"
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
-        "summary": "Health (v1 mirror)"
+        "summary": "Update a card by id",
+        "tags": [
+          "cards"
+        ]
       }
     },
-    "/api/v1/tags": {
-      "get": {
-        "operationId": "list_tags",
+    "/api/v1/cards/{card_id}/archive": {
+      "patch": {
+        "operationId": "archive_card_api_v1_cards__card_id__archive_patch",
         "parameters": [
           {
-            "in": "query",
-            "name": "include_archived",
+            "in": "path",
+            "name": "card_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Card Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
             "required": false,
-            "schema": { "default": false, "type": "boolean" }
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CardArchive"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardRead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive or unarchive a card",
+        "tags": [
+          "cards"
+        ]
+      }
+    },
+    "/api/v1/cards/{slug}": {
+      "get": {
+        "operationId": "get_card_api_v1_cards__slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
             "content": {
               "application/json": {
-                "schema": { "items": { "type": "string" }, "type": "array" }
+                "schema": {
+                  "$ref": "#/components/schemas/CardDetail"
+                }
               }
             },
-            "description": "OK"
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
-        "summary": "List tags"
+        "summary": "Get card by slug",
+        "tags": [
+          "cards"
+        ]
+      }
+    },
+    "/api/v1/covers": {
+      "post": {
+        "description": "Validate the multipart upload and persist it for ``card_id``.",
+        "operationId": "post_cover_api_v1_covers_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_post_cover_api_v1_covers_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CoverUploadResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload a cover image for a card",
+        "tags": [
+          "covers"
+        ]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "description": "Return the liveness envelope ``{\"ok\": true}``.",
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness probe",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/tags": {
+      "get": {
+        "description": "Return the distinct union of card tags, case-insensitively deduped and sorted. By default, tags from archived cards are excluded; pass ``include_archived=true`` to include them.",
+        "operationId": "get_tags_api_v1_tags_get",
+        "parameters": [
+          {
+            "description": "Include tags attached to archived cards.",
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Include tags attached to archived cards.",
+              "title": "Include Archived",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "title": "Response Get Tags Api V1 Tags Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List distinct tags",
+        "tags": [
+          "tags"
+        ]
       }
     }
   }

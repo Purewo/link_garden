@@ -13,18 +13,6 @@ export default tseslint.config(
       'src/shared/api/schema.d.ts',
       'openapi/schema.json',
       '**/*.cjs',
-      // Legacy JS scaffolding from the pre-TS app. Other units replace these
-      // in-place; until the integrator merges, exclude them from lint so the
-      // new files can be enforced strictly.
-      'vite.config.js',
-      'src/main.js',
-      'src/style.css',
-      'src/components/HelloWorld.vue',
-      'src/components/MilkdownEditor.vue',
-      'src/views/AdminPublishView.vue',
-      'src/views/AdminView.vue',
-      'src/views/DetailView.vue',
-      'src/views/HomeView.vue',
     ],
   },
   js.configs.recommended,

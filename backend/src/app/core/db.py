@@ -124,7 +124,12 @@ async def dispose_engine() -> None:
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency: yield an :class:`AsyncSession`, rollback on error."""
+    """FastAPI dependency: yield an :class:`AsyncSession`.
+
+    Commits on a clean exit, rolls back on any exception escaping the
+    handler. Repositories therefore stay commit-free, which makes
+    multi-step service operations atomic.
+    """
 
     factory = get_session_factory()
     async with factory() as session:
@@ -133,6 +138,8 @@ async def get_session() -> AsyncIterator[AsyncSession]:
         except Exception:
             await session.rollback()
             raise
+        else:
+            await session.commit()
         finally:
             await session.close()
 

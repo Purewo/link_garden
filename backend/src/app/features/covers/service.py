@@ -19,9 +19,9 @@ the architecture spec:
    inside the covers directory.
 8. Update ``card.cover`` in the same async transaction with a cache-buster.
 
-The service is import-light: it takes the cards repository, the async
-session, and the upload as plain arguments so it can be unit-tested in
-isolation. The router (``routes.py``) does the FastAPI dependency wiring.
+The service is import-light: it takes the cards service, the async session,
+and the upload as plain arguments so it can be unit-tested in isolation.
+The router (``routes.py``) does the FastAPI dependency wiring.
 """
 
 from __future__ import annotations
@@ -36,13 +36,14 @@ from uuid import UUID
 
 from PIL import Image, UnidentifiedImageError
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.core.errors import (
     BadRequest,
     NotFound,
     PayloadTooLarge,
     UnsupportedMediaType,
 )
+from app.features.cards.schemas import CardRead
 from app.features.covers.schemas import CoverUploadResponse
 
 if TYPE_CHECKING:
@@ -256,16 +257,23 @@ async def upload_cover(
     upload: UploadFile,
     card_id: UUID,
     session: AsyncSession,
-    settings: Settings,
-    card_repo: Any,
+    card_service: Any,
+    settings: Settings | None = None,
 ) -> CoverUploadResponse:
     """Validate, persist, and link a cover for ``card_id``.
 
     The caller (router) supplies the FastAPI ``UploadFile``, the resolved
-    ``card_id``, an open ``AsyncSession``, the process settings, and the
-    cards repository instance. Keeping the repo as a parameter (rather
-    than constructing it here) means tests can inject a fake without
-    touching the database.
+    ``card_id``, an open ``AsyncSession``, and a card service that owns
+    the cards repository internally. ``settings`` is optional — when
+    omitted the cached ``get_settings()`` singleton is used so test
+    callers can either pin a custom settings instance or share the
+    process-wide config.
+
+    The ``card_service`` only needs to expose two methods:
+
+    * ``get_by_id(card_id)`` — return the row or ``None``.
+    * ``attach_cover(card_id, url)`` — persist the new cover URL and
+      return the refreshed row (raises 404 if the card vanished).
 
     Raises:
         NotFound: ``card_not_found`` — no card with the given id.
@@ -276,13 +284,14 @@ async def upload_cover(
 
     Returns:
         CoverUploadResponse: With the new public URL (cache-busted) and
-        the updated ``CardRead`` payload (or whatever the repository
-        returns for ``get_by_id``).
+        the updated ``CardRead`` payload.
     """
+
+    settings = settings if settings is not None else get_settings()
 
     # --- Step 1: resolve card. Done first so we don't spend cycles
     # validating an upload for a card that doesn't exist.
-    card = await card_repo.get_by_id(card_id)
+    card = await card_service.get_by_id(card_id)
     if card is None:
         raise NotFound(code="card_not_found", message="Card not found")
 
@@ -341,9 +350,11 @@ async def upload_cover(
     # the file without coordinating with the backend.
     cache_buster = int(time.time())
     public_url = f"{settings.COVERS_PUBLIC_PREFIX}/{filename}?v={cache_buster}"
-    updated_card = await card_repo.set_cover(card_id, public_url)
-    # ``set_cover`` is the cards-repo write hook; if the integrator names
-    # it differently the contract is still small enough to adjust.
+    updated_card = await card_service.attach_cover(card_id, public_url)
+
+    # Project the ORM row through ``CardRead`` so the wire shape is typed
+    # and the generated openapi-typescript schema picks it up.
+    card_payload = CardRead.model_validate(updated_card)
 
     return CoverUploadResponse(
         ok=True,
@@ -351,7 +362,7 @@ async def upload_cover(
         width=width,
         height=height,
         bytes=len(data),
-        card=updated_card,
+        card=card_payload,
     )
 
 

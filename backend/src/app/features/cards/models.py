@@ -73,7 +73,7 @@ class Card(Base, TimestampMixin):
         Index(
             "ix_cards_archived_created_at",
             "archived",
-            "created_at",
+            text("created_at DESC"),
         ),
         Index("ix_cards_category", "category"),
         Index("ix_cards_group", "group"),

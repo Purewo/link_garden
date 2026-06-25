@@ -96,11 +96,13 @@ ALLOWED_ATTRS: Final[dict[str, frozenset[str]]] = {
     "div": frozenset({"class"}),
     "th": frozenset({"align", "scope"}),
     "td": frozenset({"align"}),
-    "input": frozenset({"type", "checked", "disabled"}),
+    "input": frozenset({"checked", "disabled"}),
 }
 """Per-tag attribute allowlist. ``class`` is intentionally narrow — only
 on the inline-code/code-card stack and on ``span``/``div`` for prose
-helpers."""
+helpers. ``<input>`` only ever appears as the GFM tasklist checkbox;
+the ``type`` attribute is force-set to ``checkbox`` by nh3 below so a
+malicious source cannot smuggle ``type="hidden"``/``type="submit"``."""
 
 
 URL_SCHEMES: Final[frozenset[str]] = frozenset({"http", "https", "mailto"})
@@ -203,6 +205,12 @@ def render_markdown(md: str) -> str:
         link_rel=LINK_REL,
         # Force every surviving anchor to open in a new tab. nh3 already
         # filtered the tag/attr through the allowlist; this only sets the
-        # value, so it cannot resurrect a dropped anchor.
-        set_tag_attribute_values={"a": {"target": "_blank"}},
+        # value, so it cannot resurrect a dropped anchor. The matching
+        # ``input.type`` pin neutralises crafted ``<input type="hidden">``
+        # / ``type="submit">`` etc. — the tasklist plugin is the only
+        # legitimate emitter and it always uses checkboxes.
+        set_tag_attribute_values={
+            "a": {"target": "_blank"},
+            "input": {"type": "checkbox"},
+        },
     )

@@ -108,8 +108,10 @@ class TestModuleConstants:
 
     def test_input_attrs_constrained_to_task_lists(self) -> None:
         # task-list checkboxes are the only input the renderer emits;
-        # the attribute set must not grow without review.
-        assert ALLOWED_ATTRS["input"] == frozenset({"type", "checked", "disabled"})
+        # the attribute set must not grow without review. ``type`` is
+        # absent because nh3 force-sets it to ``checkbox`` so a hostile
+        # ``type="hidden"`` cannot smuggle through.
+        assert ALLOWED_ATTRS["input"] == frozenset({"checked", "disabled"})
 
 
 # ---------------------------------------------------------------------------

@@ -10,8 +10,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Health (stable monitor path) */
-        get: operations["health_root"];
+        /**
+         * Liveness probe
+         * @description Return the liveness envelope ``{"ok": true}``.
+         */
+        get: operations["health_api_health_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -29,8 +32,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Login */
-        post: operations["auth_login"];
+        /**
+         * Login
+         * @description Validate credentials and return a JWT.
+         *
+         *     Wrong credentials raise 401 `invalid_credentials`; oversized payloads
+         *     are rejected with 422 by Pydantic before this handler runs. Repeated
+         *     failures from the same (username, client_ip) bucket trip a 429
+         *     ``too_many_attempts`` brake.
+         */
+        post: operations["login_api_v1_auth_login_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -44,8 +55,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Current user */
-        get: operations["auth_me"];
+        /**
+         * Me
+         * @description Return the authenticated user.
+         *
+         *     Used by the SPA on boot to validate a persisted token. The dep takes
+         *     care of 401 paths — by the time we reach the body, `current_user` is
+         *     guaranteed to be a real row.
+         */
+        get: operations["me_api_v1_auth_me_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -61,18 +79,21 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List cards */
-        get: operations["list_cards"];
+        /**
+         * List cards
+         * @description Return cards matching the query filters. Default sort is ``created_at DESC, id DESC``. Archived cards are excluded unless ``include_archived=true`` is passed.
+         */
+        get: operations["list_cards_api_v1_cards_get"];
         put?: never;
-        /** Create card */
-        post: operations["create_card"];
+        /** Publish a new card */
+        post: operations["publish_card_api_v1_cards_post"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cards/{id}": {
+    "/api/v1/cards/{card_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -80,17 +101,17 @@ export interface paths {
             cookie?: never;
         };
         get?: never;
-        /** Update card */
-        put: operations["update_card"];
+        /** Update a card by id */
+        put: operations["update_card_api_v1_cards__card_id__put"];
         post?: never;
-        /** Delete card */
-        delete: operations["delete_card"];
+        /** Delete a card */
+        delete: operations["delete_card_api_v1_cards__card_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/v1/cards/{id}/archive": {
+    "/api/v1/cards/{card_id}/archive": {
         parameters: {
             query?: never;
             header?: never;
@@ -103,8 +124,8 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Archive card */
-        patch: operations["archive_card"];
+        /** Archive or unarchive a card */
+        patch: operations["archive_card_api_v1_cards__card_id__archive_patch"];
         trace?: never;
     };
     "/api/v1/cards/{slug}": {
@@ -115,7 +136,7 @@ export interface paths {
             cookie?: never;
         };
         /** Get card by slug */
-        get: operations["get_card"];
+        get: operations["get_card_api_v1_cards__slug__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -133,8 +154,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Upload cover */
-        post: operations["upload_cover"];
+        /**
+         * Upload a cover image for a card
+         * @description Validate the multipart upload and persist it for ``card_id``.
+         */
+        post: operations["post_cover_api_v1_covers_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -148,8 +172,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Health (v1 mirror) */
-        get: operations["health_v1"];
+        /**
+         * Liveness probe
+         * @description Return the liveness envelope ``{"ok": true}``.
+         */
+        get: operations["health_api_v1_health_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -165,8 +192,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List tags */
-        get: operations["list_tags"];
+        /**
+         * List distinct tags
+         * @description Return the distinct union of card tags, case-insensitively deduped and sorted. By default, tags from archived cards are excluded; pass ``include_archived=true`` to include them.
+         */
+        get: operations["get_tags_api_v1_tags_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -179,143 +209,351 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** CardArchive */
+        /** Body_post_cover_api_v1_covers_post */
+        Body_post_cover_api_v1_covers_post: {
+            /**
+             * Card Id
+             * Format: uuid
+             */
+            card_id: string;
+            /** File */
+            file: string;
+        };
+        /**
+         * CardArchive
+         * @description Setter for the archive endpoint. ``archived`` is required (no default).
+         *
+         *     Removing the legacy "empty body archives" surprise from phase 1 is the
+         *     whole point of the explicit required field.
+         */
         CardArchive: {
+            /** Archived */
             archived: boolean;
         };
-        /** CardCreate */
+        /**
+         * CardCreate
+         * @description Admin publish payload.
+         *
+         *     Validates ``external ⇒ url`` and ``local ⇒ body`` after the field-level
+         *     coercions run, so a payload with both/neither is rejected before the
+         *     service is invoked.
+         */
         CardCreate: {
+            /** Body */
             body?: string | null;
-            /** @enum {string} */
+            /**
+             * Category
+             * @enum {string}
+             */
             category: "external" | "local";
+            /** Cover */
             cover?: string | null;
-            /** @enum {string|null} */
-            group?: "技术类" | "随笔类" | "生活类" | null;
+            /** Group */
+            group?: ("技术类" | "随笔类" | "生活类") | null;
+            /** Slug */
             slug?: string | null;
-            /** @default  */
+            /**
+             * Summary
+             * @default
+             */
             summary: string;
-            /** @default [] */
-            tags: string[];
-            title: string;
-            url?: string | null;
-        };
-        /** CardDetail */
-        CardDetail: {
-            archived: boolean;
-            body?: string | null;
-            body_html?: string | null;
-            /** @enum {string} */
-            category: "external" | "local";
-            cover?: string | null;
-            /** Format: date-time */
-            created_at: string;
-            /** @enum {string|null} */
-            group?: "技术类" | "随笔类" | "生活类" | null;
-            /** Format: uuid */
-            id: string;
-            slug: string;
-            summary: string;
-            tags: string[];
-            title: string;
-            /** Format: date-time */
-            updated_at: string;
-            url?: string | null;
-        };
-        /** CardListItem */
-        CardListItem: {
-            archived: boolean;
-            /** @enum {string} */
-            category: "external" | "local";
-            cover?: string | null;
-            /** Format: date-time */
-            created_at: string;
-            /** @enum {string|null} */
-            group?: "技术类" | "随笔类" | "生活类" | null;
-            /** Format: uuid */
-            id: string;
-            slug: string;
-            summary: string;
-            tags: string[];
-            title: string;
-        };
-        /** CardRead */
-        CardRead: {
-            archived: boolean;
-            /** @enum {string} */
-            category: "external" | "local";
-            cover?: string | null;
-            /** Format: date-time */
-            created_at: string;
-            /** @enum {string|null} */
-            group?: "技术类" | "随笔类" | "生活类" | null;
-            /** Format: uuid */
-            id: string;
-            slug: string;
-            summary: string;
-            tags: string[];
-            title: string;
-            /** Format: date-time */
-            updated_at: string;
-            url?: string | null;
-        };
-        /** CardUpdate */
-        CardUpdate: {
-            body?: string | null;
-            /** @enum {string} */
-            category?: "external" | "local";
-            cover?: string | null;
-            /** @enum {string|null} */
-            group?: "技术类" | "随笔类" | "生活类" | null;
-            slug?: string | null;
-            summary?: string;
+            /** Tags */
             tags?: string[];
-            title?: string;
+            /** Title */
+            title: string;
+            /** Url */
             url?: string | null;
         };
-        /** CoverUploadResponse */
+        /**
+         * CardDetail
+         * @description Detail read shape including raw body and rendered HTML.
+         *
+         *     ``body`` and ``body_html`` are only populated when ``category == 'local'``
+         *     so external cards stay light over the wire.
+         */
+        CardDetail: {
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
+            /** Body */
+            body?: string | null;
+            /** Body Html */
+            body_html?: string | null;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "external" | "local";
+            /** Cover */
+            cover?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Group */
+            group?: ("技术类" | "随笔类" | "生活类") | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Tags */
+            tags?: string[];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * CardListItem
+         * @description List-row projection of a card. Used by ``GET /cards``.
+         */
+        CardListItem: {
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "external" | "local";
+            /** Cover */
+            cover?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Group */
+            group?: ("技术类" | "随笔类" | "生活类") | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Tags */
+            tags?: string[];
+            /** Title */
+            title: string;
+        };
+        /**
+         * CardRead
+         * @description Full read shape minus body/body_html. Returned by archive endpoint.
+         */
+        CardRead: {
+            /**
+             * Archived
+             * @default false
+             */
+            archived: boolean;
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "external" | "local";
+            /** Cover */
+            cover?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Group */
+            group?: ("技术类" | "随笔类" | "生活类") | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Slug */
+            slug: string;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Tags */
+            tags?: string[];
+            /** Title */
+            title: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * CardUpdate
+         * @description Admin partial update payload.
+         *
+         *     Every field is optional. Omitted fields are preserved by the service so a
+         *     PUT with only ``{title: '…'}`` no longer wipes ``summary``/``cover`` — a
+         *     fix for a documented P1 bug from phase 1.
+         *
+         *     The category/url/body coupling is re-checked against the merged result in
+         *     the service layer, since this schema cannot see the current row.
+         */
+        CardUpdate: {
+            /** Body */
+            body?: string | null;
+            /** Category */
+            category?: ("external" | "local") | null;
+            /** Cover */
+            cover?: string | null;
+            /** Group */
+            group?: ("技术类" | "随笔类" | "生活类") | null;
+            /** Slug */
+            slug?: string | null;
+            /** Summary */
+            summary?: string | null;
+            /** Tags */
+            tags?: string[] | null;
+            /** Title */
+            title?: string | null;
+            /** Url */
+            url?: string | null;
+        };
+        /**
+         * CoverUploadResponse
+         * @description Response body for ``POST /api/v1/covers``.
+         *
+         *     Attributes:
+         *         ok: Constant ``True`` so success/failure can be branched on a single
+         *             field without inspecting status codes.
+         *         url: Public URL of the stored cover (``COVERS_PUBLIC_PREFIX`` +
+         *             ``/{card_id}.{ext}`` + cache-buster ``?v=<unix-ts>``).
+         *         width: Decoded pixel width (post-Pillow verify).
+         *         height: Decoded pixel height.
+         *         bytes: Final on-disk size in bytes.
+         *         card: The updated card row, projected through :class:`CardRead`.
+         */
         CoverUploadResponse: {
+            /** Bytes */
             bytes: number;
             card: components["schemas"]["CardRead"];
+            /** Height */
             height: number;
-            /** @constant */
+            /**
+             * Ok
+             * @default true
+             * @constant
+             */
             ok: true;
+            /** Url */
             url: string;
+            /** Width */
             width: number;
         };
-        /** ErrorEnvelope */
-        ErrorEnvelope: {
-            code: string;
-            detail?: Record<string, never>[] | null;
-            error: string;
-            /** @constant */
-            ok: false;
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
         };
-        /** LoginRequest */
+        /**
+         * LoginRequest
+         * @description Body of `POST /api/v1/auth/login`.
+         *
+         *     Bounds match the user table widths in §3.3 so over-long inputs are
+         *     rejected with a 422 before they reach bcrypt (which itself truncates at
+         *     72 bytes).
+         */
         LoginRequest: {
+            /** Password */
             password: string;
+            /** Username */
             username: string;
         };
-        /** OkResponse */
+        /**
+         * OkResponse
+         * @description Shape of the bare-acknowledgement success response.
+         */
         OkResponse: {
-            /** @constant */
+            /**
+             * Ok
+             * @default true
+             * @constant
+             */
             ok: true;
         };
-        /** TokenResponse */
+        /**
+         * TokenResponse
+         * @description Success body of `POST /api/v1/auth/login`.
+         *
+         *     `expires_in` is seconds, mirroring the conventional OAuth2 token
+         *     response shape so the frontend can store an absolute deadline if it
+         *     wants to.
+         */
         TokenResponse: {
+            /** Access Token */
             access_token: string;
+            /** Expires In */
             expires_in: number;
-            /** @constant */
+            /**
+             * Token Type
+             * @default bearer
+             * @constant
+             */
             token_type: "bearer";
             user: components["schemas"]["UserRead"];
         };
-        /** UserRead */
+        /**
+         * UserRead
+         * @description Public read view of a user row.
+         */
         UserRead: {
-            /** Format: date-time */
+            /**
+             * Created At
+             * Format: date-time
+             */
             created_at: string;
-            /** Format: uuid */
+            /**
+             * Id
+             * Format: uuid
+             */
             id: string;
+            /** Role */
             role: string;
+            /** Username */
             username: string;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Context */
+            ctx?: Record<string, never>;
+            /** Input */
+            input?: unknown;
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
         };
     };
     responses: never;
@@ -326,7 +564,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    health_root: {
+    health_api_health_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -335,7 +573,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -346,7 +584,7 @@ export interface operations {
             };
         };
     };
-    auth_login: {
+    login_api_v1_auth_login_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -359,7 +597,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -368,27 +606,29 @@ export interface operations {
                     "application/json": components["schemas"]["TokenResponse"];
                 };
             };
-            /** @description Unauthorized */
-            401: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    auth_me: {
+    me_api_v1_auth_me_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -397,13 +637,22 @@ export interface operations {
                     "application/json": components["schemas"]["UserRead"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    list_cards: {
+    list_cards_api_v1_cards_get: {
         parameters: {
             query?: {
-                category?: "external" | "local" | null;
-                group?: "技术类" | "随笔类" | "生活类" | null;
+                category?: ("external" | "local") | null;
+                group?: ("技术类" | "随笔类" | "生活类") | null;
                 tag?: string | null;
                 q?: string | null;
                 include_archived?: boolean;
@@ -414,7 +663,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -423,12 +672,23 @@ export interface operations {
                     "application/json": components["schemas"]["CardListItem"][];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    create_card: {
+    publish_card_api_v1_cards_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -438,7 +698,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Created */
+            /** @description Successful Response */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -447,14 +707,25 @@ export interface operations {
                     "application/json": components["schemas"]["CardDetail"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    update_card: {
+    update_card_api_v1_cards__card_id__put: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
-                id: string;
+                card_id: string;
             };
             cookie?: never;
         };
@@ -464,7 +735,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -473,34 +744,56 @@ export interface operations {
                     "application/json": components["schemas"]["CardDetail"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    delete_card: {
+    delete_card_api_v1_cards__card_id__delete: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
-                id: string;
+                card_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description No Content */
+            /** @description Successful Response */
             204: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content?: never;
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    archive_card: {
+    archive_card_api_v1_cards__card_id__archive_patch: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path: {
-                id: string;
+                card_id: string;
             };
             cookie?: never;
         };
@@ -510,7 +803,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -519,9 +812,18 @@ export interface operations {
                     "application/json": components["schemas"]["CardRead"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    get_card: {
+    get_card_api_v1_cards__slug__get: {
         parameters: {
             query?: never;
             header?: never;
@@ -532,7 +834,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -541,36 +843,33 @@ export interface operations {
                     "application/json": components["schemas"]["CardDetail"];
                 };
             };
-            /** @description Not Found */
-            404: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    upload_cover: {
+    post_cover_api_v1_covers_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                authorization?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
         requestBody: {
             content: {
-                "multipart/form-data": {
-                    /** Format: uuid */
-                    card_id: string;
-                    /** Format: binary */
-                    file: string;
-                };
+                "multipart/form-data": components["schemas"]["Body_post_cover_api_v1_covers_post"];
             };
         };
         responses: {
-            /** @description Created */
+            /** @description Successful Response */
             201: {
                 headers: {
                     [name: string]: unknown;
@@ -579,9 +878,18 @@ export interface operations {
                     "application/json": components["schemas"]["CoverUploadResponse"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    health_v1: {
+    health_api_v1_health_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -590,7 +898,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -601,9 +909,10 @@ export interface operations {
             };
         };
     };
-    list_tags: {
+    get_tags_api_v1_tags_get: {
         parameters: {
             query?: {
+                /** @description Include tags attached to archived cards. */
                 include_archived?: boolean;
             };
             header?: never;
@@ -612,13 +921,22 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description OK */
+            /** @description Successful Response */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": string[];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

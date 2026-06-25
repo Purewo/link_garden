@@ -8,6 +8,7 @@ so the worker exits before serving traffic.
 
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Final, Literal
@@ -18,6 +19,32 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Anchor relative paths to the backend root (the directory that owns
 # ``pyproject.toml``), not the cwd of whoever launched the process.
 _BACKEND_ROOT: Final[Path] = Path(__file__).resolve().parents[3]
+
+
+# Single-token placeholder forms we reject up-front. The validator below
+# also screens for ``REPLACE_ME``/``CHANGE_ME``-style ALL-CAPS sentinels and
+# low-entropy strings even when the literal isn't in this set.
+_PLACEHOLDER_LITERALS: Final[frozenset[str]] = frozenset(
+    {"change-me", "changeme", "secret", "__unset__", "placeholder"}
+)
+# All-caps with underscores/digits only — exactly the shape of every
+# REPLACE_ME_WITH_… sentinel that has shipped in example envs.
+_ALLCAPS_SENTINEL: Final[re.Pattern[str]] = re.compile(r"^[A-Z0-9_]+$")
+
+
+def _is_placeholder_secret(value: str) -> bool:
+    """Return True when ``value`` is structurally a sentinel, not a secret."""
+
+    folded = value.casefold()
+    if folded in _PLACEHOLDER_LITERALS:
+        return True
+    if _ALLCAPS_SENTINEL.fullmatch(value):
+        return True
+    if "replace_me" in folded or "replaceme" in folded:
+        return True
+    if len(set(value)) < 16:
+        return True
+    return False
 
 
 class Settings(BaseSettings):
@@ -83,9 +110,25 @@ class Settings(BaseSettings):
     def _refuse_placeholder_secret(cls, value: str, info: ValidationInfo) -> str:
         # ``min_length=32`` already covers most cases; this guards against the
         # obvious ".env.example" leakage where someone forgets to rotate.
-        forbidden = {"change-me", "changeme", "secret"}
-        if value.lower() in forbidden:
-            raise ValueError("JWT_SECRET must not be a placeholder value")
+        if _is_placeholder_secret(value):
+            raise ValueError(
+                "JWT_SECRET must not be a placeholder value (rotate via "
+                "`openssl rand -hex 32`)"
+            )
+        return value
+
+    @field_validator("LG_ADMIN_PASSWORD")
+    @classmethod
+    def _refuse_placeholder_admin_password(
+        cls, value: str, info: ValidationInfo
+    ) -> str:
+        # Empty string means "do not seed", which is legal. Anything else
+        # has to pass the same sentinel screen as JWT_SECRET so a forgotten
+        # REPLACE_ME never reaches bcrypt.
+        if value and _is_placeholder_secret(value):
+            raise ValueError(
+                "LG_ADMIN_PASSWORD must not be a placeholder value"
+            )
         return value
 
     @property

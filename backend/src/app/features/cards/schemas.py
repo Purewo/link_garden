@@ -57,6 +57,9 @@ CardGroup = Literal["技术类", "随笔类", "生活类"]
 
 _MAX_TAGS: Final[int] = 16
 _MAX_TAG_LENGTH: Final[int] = 32
+# Markdown body cap: 256 KiB is well above any human-authored article and
+# keeps Pydantic + markdown-it + nh3 from being weaponised for OOM.
+_MAX_BODY_LENGTH: Final[int] = 256 * 1024
 
 
 def _normalise_tags(value: object) -> list[str]:
@@ -176,7 +179,7 @@ class CardCreate(_BaseSchema):
     tags: list[str] = Field(default_factory=list)
     cover: str | None = Field(default=None, max_length=512)
     url: str | None = Field(default=None, max_length=2048)
-    body: str | None = None
+    body: str | None = Field(default=None, max_length=_MAX_BODY_LENGTH)
     slug: str | None = Field(default=None, max_length=200)
 
     @field_validator("summary", mode="before")
@@ -258,7 +261,7 @@ class CardUpdate(_BaseSchema):
     tags: list[str] | None = None
     cover: str | None = Field(default=None, max_length=512)
     url: str | None = Field(default=None, max_length=2048)
-    body: str | None = None
+    body: str | None = Field(default=None, max_length=_MAX_BODY_LENGTH)
     slug: str | None = Field(default=None, max_length=200)
 
     @field_validator("tags", mode="before")

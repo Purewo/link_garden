@@ -9,12 +9,12 @@
  * the domain types are re-exported from the generated
  * `shared/api/schema.d.ts` via `shared/types/domain` (B9 codegen).
  */
-import { api } from '../../shared/api/client'
+import { api } from '@/shared/api/client'
 import type {
   LoginRequest,
   TokenResponse,
   UserRead,
-} from '../../shared/types/domain'
+} from '@/shared/types/domain'
 
 /**
  * Pull `data` off an openapi-fetch result and rethrow on `error`.

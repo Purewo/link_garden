@@ -9,7 +9,7 @@
  * and the domain types are re-exported from the generated
  * `shared/api/schema.d.ts` (B9 codegen).
  */
-import { api } from '../../shared/api/client'
+import { api } from '@/shared/api/client'
 import type {
   CardArchive,
   CardCategory,
@@ -19,7 +19,7 @@ import type {
   CardListItem,
   CardRead,
   CardUpdate,
-} from '../../shared/types/domain'
+} from '@/shared/types/domain'
 
 /**
  * Query parameters for `GET /cards`. The backend exposes this as a

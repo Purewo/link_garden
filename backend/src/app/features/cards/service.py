@@ -88,12 +88,7 @@ class CardService:
         """Insert a new card from an admin publish payload."""
 
         # Slug derivation: prefer the explicit slug, else the title.
-        base = slugify(payload.slug or payload.title)
-        if payload.slug:
-            # When the operator supplied an explicit slug we still de-collide
-            # but we don't slugify it twice (slugify is idempotent on valid
-            # slugs anyway).
-            base = slugify(payload.slug)
+        base = slugify(payload.slug) if payload.slug else slugify(payload.title)
         slug = await unique_slug(self.session, base)
 
         body = payload.body if payload.category == "local" else None
@@ -119,9 +114,8 @@ class CardService:
         try:
             return await self.repo.insert(card)
         except Exception as exc:  # pragma: no cover - DB-side defense in depth
-            await self.session.rollback()
-            # A race against the partial unique index lands here even though
-            # ``unique_slug`` checked first; surface as a structured conflict.
+            # ``get_session`` will rollback on the raised exception; we
+            # only translate slug-collision races into a structured 409.
             if "slug" in str(exc).lower():
                 raise Conflict(
                     "slug_conflict",
@@ -208,7 +202,8 @@ class CardService:
         try:
             return await self.repo.update(card)
         except Exception as exc:
-            await self.session.rollback()
+            # ``get_session`` rolls back automatically; only translate
+            # slug-collision races into a structured 409.
             if "slug" in str(exc).lower():
                 raise Conflict(
                     "slug_conflict",
@@ -256,6 +251,20 @@ class CardService:
 
         if cover_url and cover_url.startswith(self.settings.COVERS_PUBLIC_PREFIX):
             self._unlink_cover_file(cover_url)
+
+    async def attach_cover(self, card_id: UUID, cover_url: str) -> Card:
+        """Set ``card.cover`` to ``cover_url`` and return the refreshed row.
+
+        Exposed as the seam the covers feature consumes so that feature stays
+        unaware of the cards repository. Raises 404 ``card_not_found`` when
+        the card has disappeared between the upload validation and the
+        commit.
+        """
+
+        card = await self.repo.set_cover(card_id, cover_url)
+        if card is None:
+            raise NotFound("card_not_found", "Card not found")
+        return card
 
     # ------------------------------------------------------------------ #
     # Helpers                                                            #

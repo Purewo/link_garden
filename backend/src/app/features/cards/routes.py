@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_session
@@ -78,19 +78,8 @@ def _to_read(card: Card) -> CardRead:
 )
 async def list_cards(
     session: Annotated[AsyncSession, Depends(get_session)],
-    category: Annotated[str | None, Query(max_length=16)] = None,
-    group: Annotated[str | None, Query(max_length=32)] = None,
-    tag: Annotated[str | None, Query(max_length=32)] = None,
-    q: Annotated[str | None, Query(max_length=200)] = None,
-    include_archived: Annotated[bool, Query()] = False,
+    query: Annotated[CardListQuery, Depends()],
 ) -> list[CardListItem]:
-    query = CardListQuery(
-        category=category,  # type: ignore[arg-type]
-        group=group,  # type: ignore[arg-type]
-        tag=tag,
-        q=q,
-        include_archived=include_archived,
-    )
     cards = await CardService(session).list_cards(query)
     return [_to_list_item(card) for card in cards]
 
