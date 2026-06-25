@@ -1,0 +1,88 @@
+/**
+ * highlight.js theme tuned to the LinkGarden dark palette. Activated when
+ * useEnhanceCodeBlocks runs hljs.highlightElement on a `<code>` element.
+ */
+.hljs {
+  display: block;
+  overflow-x: auto;
+  color: #d8e1ff;
+  background: transparent;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #6b7491;
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-subst {
+  color: #ff8eb2;
+  font-weight: 500;
+}
+
+.hljs-number,
+.hljs-literal,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag .hljs-attr {
+  color: #ffc36a;
+}
+
+.hljs-string,
+.hljs-doctag {
+  color: #99e7a9;
+}
+
+.hljs-title,
+.hljs-section,
+.hljs-selector-id {
+  color: #00d2ff;
+}
+
+.hljs-type,
+.hljs-class .hljs-title {
+  color: #b794f6;
+}
+
+.hljs-tag,
+.hljs-name,
+.hljs-attribute {
+  color: #76d4ff;
+}
+
+.hljs-regexp,
+.hljs-link {
+  color: #ffc36a;
+}
+
+.hljs-symbol,
+.hljs-bullet {
+  color: #ffc36a;
+}
+
+.hljs-built_in,
+.hljs-builtin-name {
+  color: #ffd479;
+}
+
+.hljs-meta {
+  color: #8d99c1;
+}
+
+.hljs-deletion {
+  background: rgba(255, 98, 133, 0.16);
+}
+
+.hljs-addition {
+  background: rgba(74, 223, 156, 0.16);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 700;
+}

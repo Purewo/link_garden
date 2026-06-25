@@ -1,0 +1,529 @@
+{
+  "components": {
+    "schemas": {
+      "CardArchive": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": { "type": "boolean" }
+        },
+        "required": ["archived"],
+        "title": "CardArchive",
+        "type": "object"
+      },
+      "CardCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "body": { "type": ["string", "null"] },
+          "category": { "enum": ["external", "local"], "type": "string" },
+          "cover": { "type": ["string", "null"] },
+          "group": {
+            "enum": ["技术类", "随笔类", "生活类", null],
+            "type": ["string", "null"]
+          },
+          "slug": { "type": ["string", "null"] },
+          "summary": { "default": "", "type": "string" },
+          "tags": {
+            "default": [],
+            "items": { "type": "string" },
+            "type": "array"
+          },
+          "title": { "type": "string" },
+          "url": { "type": ["string", "null"] }
+        },
+        "required": ["category", "title"],
+        "title": "CardCreate",
+        "type": "object"
+      },
+      "CardDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": { "type": "boolean" },
+          "body": { "type": ["string", "null"] },
+          "body_html": { "type": ["string", "null"] },
+          "category": { "enum": ["external", "local"], "type": "string" },
+          "cover": { "type": ["string", "null"] },
+          "created_at": { "format": "date-time", "type": "string" },
+          "group": {
+            "enum": ["技术类", "随笔类", "生活类", null],
+            "type": ["string", "null"]
+          },
+          "id": { "format": "uuid", "type": "string" },
+          "slug": { "type": "string" },
+          "summary": { "type": "string" },
+          "tags": { "items": { "type": "string" }, "type": "array" },
+          "title": { "type": "string" },
+          "updated_at": { "format": "date-time", "type": "string" },
+          "url": { "type": ["string", "null"] }
+        },
+        "required": [
+          "archived",
+          "category",
+          "created_at",
+          "id",
+          "slug",
+          "summary",
+          "tags",
+          "title",
+          "updated_at"
+        ],
+        "title": "CardDetail",
+        "type": "object"
+      },
+      "CardListItem": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": { "type": "boolean" },
+          "category": { "enum": ["external", "local"], "type": "string" },
+          "cover": { "type": ["string", "null"] },
+          "created_at": { "format": "date-time", "type": "string" },
+          "group": {
+            "enum": ["技术类", "随笔类", "生活类", null],
+            "type": ["string", "null"]
+          },
+          "id": { "format": "uuid", "type": "string" },
+          "slug": { "type": "string" },
+          "summary": { "type": "string" },
+          "tags": { "items": { "type": "string" }, "type": "array" },
+          "title": { "type": "string" }
+        },
+        "required": [
+          "archived",
+          "category",
+          "created_at",
+          "id",
+          "slug",
+          "summary",
+          "tags",
+          "title"
+        ],
+        "title": "CardListItem",
+        "type": "object"
+      },
+      "CardRead": {
+        "additionalProperties": false,
+        "properties": {
+          "archived": { "type": "boolean" },
+          "category": { "enum": ["external", "local"], "type": "string" },
+          "cover": { "type": ["string", "null"] },
+          "created_at": { "format": "date-time", "type": "string" },
+          "group": {
+            "enum": ["技术类", "随笔类", "生活类", null],
+            "type": ["string", "null"]
+          },
+          "id": { "format": "uuid", "type": "string" },
+          "slug": { "type": "string" },
+          "summary": { "type": "string" },
+          "tags": { "items": { "type": "string" }, "type": "array" },
+          "title": { "type": "string" },
+          "updated_at": { "format": "date-time", "type": "string" },
+          "url": { "type": ["string", "null"] }
+        },
+        "required": [
+          "archived",
+          "category",
+          "created_at",
+          "id",
+          "slug",
+          "summary",
+          "tags",
+          "title",
+          "updated_at"
+        ],
+        "title": "CardRead",
+        "type": "object"
+      },
+      "CardUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "body": { "type": ["string", "null"] },
+          "category": { "enum": ["external", "local"], "type": "string" },
+          "cover": { "type": ["string", "null"] },
+          "group": {
+            "enum": ["技术类", "随笔类", "生活类", null],
+            "type": ["string", "null"]
+          },
+          "slug": { "type": ["string", "null"] },
+          "summary": { "type": "string" },
+          "tags": { "items": { "type": "string" }, "type": "array" },
+          "title": { "type": "string" },
+          "url": { "type": ["string", "null"] }
+        },
+        "title": "CardUpdate",
+        "type": "object"
+      },
+      "CoverUploadResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": { "type": "integer" },
+          "card": { "$ref": "#/components/schemas/CardRead" },
+          "height": { "type": "integer" },
+          "ok": { "const": true, "type": "boolean" },
+          "url": { "type": "string" },
+          "width": { "type": "integer" }
+        },
+        "required": ["bytes", "card", "height", "ok", "url", "width"],
+        "title": "CoverUploadResponse",
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "code": { "type": "string" },
+          "detail": { "type": ["array", "null"], "items": { "type": "object" } },
+          "error": { "type": "string" },
+          "ok": { "const": false, "type": "boolean" }
+        },
+        "required": ["code", "error", "ok"],
+        "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "LoginRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "password": { "maxLength": 256, "minLength": 1, "type": "string" },
+          "username": { "maxLength": 64, "minLength": 1, "type": "string" }
+        },
+        "required": ["password", "username"],
+        "title": "LoginRequest",
+        "type": "object"
+      },
+      "OkResponse": {
+        "additionalProperties": false,
+        "properties": { "ok": { "const": true, "type": "boolean" } },
+        "required": ["ok"],
+        "title": "OkResponse",
+        "type": "object"
+      },
+      "TokenResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "access_token": { "type": "string" },
+          "expires_in": { "type": "integer" },
+          "token_type": { "const": "bearer", "type": "string" },
+          "user": { "$ref": "#/components/schemas/UserRead" }
+        },
+        "required": ["access_token", "expires_in", "token_type", "user"],
+        "title": "TokenResponse",
+        "type": "object"
+      },
+      "UserRead": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": { "format": "date-time", "type": "string" },
+          "id": { "format": "uuid", "type": "string" },
+          "role": { "type": "string" },
+          "username": { "type": "string" }
+        },
+        "required": ["created_at", "id", "role", "username"],
+        "title": "UserRead",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "LinkGarden",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/health": {
+      "get": {
+        "operationId": "health_root",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Health (stable monitor path)"
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "auth_login",
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/TokenResponse" } }
+            },
+            "description": "OK"
+          },
+          "401": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            },
+            "description": "Unauthorized"
+          }
+        },
+        "summary": "Login"
+      }
+    },
+    "/api/v1/auth/me": {
+      "get": {
+        "operationId": "auth_me",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/UserRead" } }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [{ "bearer": [] }],
+        "summary": "Current user"
+      }
+    },
+    "/api/v1/cards": {
+      "get": {
+        "operationId": "list_cards",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": { "enum": ["external", "local", null], "type": ["string", "null"] }
+          },
+          {
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "enum": ["技术类", "随笔类", "生活类", null],
+              "type": ["string", "null"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "tag",
+            "required": false,
+            "schema": { "type": ["string", "null"] }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": { "type": ["string", "null"] }
+          },
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": { "default": false, "type": "boolean" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": { "$ref": "#/components/schemas/CardListItem" },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "List cards"
+      },
+      "post": {
+        "operationId": "create_card",
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CardCreate" } }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/CardDetail" } }
+            },
+            "description": "Created"
+          }
+        },
+        "security": [{ "bearer": [] }],
+        "summary": "Create card"
+      }
+    },
+    "/api/v1/cards/{id}": {
+      "delete": {
+        "operationId": "delete_card",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": { "format": "uuid", "type": "string" }
+          }
+        ],
+        "responses": { "204": { "description": "No Content" } },
+        "security": [{ "bearer": [] }],
+        "summary": "Delete card"
+      },
+      "put": {
+        "operationId": "update_card",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": { "format": "uuid", "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CardUpdate" } }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/CardDetail" } }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [{ "bearer": [] }],
+        "summary": "Update card"
+      }
+    },
+    "/api/v1/cards/{id}/archive": {
+      "patch": {
+        "operationId": "archive_card",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": { "format": "uuid", "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": { "schema": { "$ref": "#/components/schemas/CardArchive" } }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/CardRead" } }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [{ "bearer": [] }],
+        "summary": "Archive card"
+      }
+    },
+    "/api/v1/cards/{slug}": {
+      "get": {
+        "operationId": "get_card",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/CardDetail" } }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/ErrorEnvelope" } }
+            },
+            "description": "Not Found"
+          }
+        },
+        "summary": "Get card by slug"
+      }
+    },
+    "/api/v1/covers": {
+      "post": {
+        "operationId": "upload_cover",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "card_id": { "format": "uuid", "type": "string" },
+                  "file": { "format": "binary", "type": "string" }
+                },
+                "required": ["card_id", "file"],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/CoverUploadResponse" }
+              }
+            },
+            "description": "Created"
+          }
+        },
+        "security": [{ "bearer": [] }],
+        "summary": "Upload cover"
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "operationId": "health_v1",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": { "schema": { "$ref": "#/components/schemas/OkResponse" } }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "Health (v1 mirror)"
+      }
+    },
+    "/api/v1/tags": {
+      "get": {
+        "operationId": "list_tags",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "include_archived",
+            "required": false,
+            "schema": { "default": false, "type": "boolean" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": { "items": { "type": "string" }, "type": "array" }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "summary": "List tags"
+      }
+    }
+  }
+}

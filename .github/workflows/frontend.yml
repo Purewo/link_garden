@@ -1,0 +1,102 @@
+name: frontend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
+      - '.pre-commit-config.yaml'
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
+      - '.pre-commit-config.yaml'
+  workflow_dispatch:
+
+concurrency:
+  group: frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: frontend
+
+jobs:
+  lint-typecheck-build:
+    name: eslint + vue-tsc + vitest + build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    env:
+      # Codegen runs against the committed openapi/schema.json snapshot in CI.
+      # The contract workflow is the authoritative drift check.
+      CI: 'true'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          # No npm cache here; pnpm provides its own store cache.
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9'
+          run_install: false
+
+      - name: Resolve pnpm store dir
+        id: pnpm-store
+        run: echo "dir=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.dir }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies (frozen)
+        run: pnpm install --frozen-lockfile
+
+      - name: Regenerate API types from committed snapshot
+        # The codegen script falls back to frontend/openapi/schema.json when no
+        # backend is reachable. CI runs against the snapshot only; the contract
+        # job is responsible for catching drift against a live backend.
+        run: pnpm gen:api
+
+      - name: Fail on uncommitted codegen drift
+        run: |
+          if ! git diff --quiet -- openapi/schema.json src/shared/api/schema.d.ts; then
+            echo "::error::Generated API types drifted from committed snapshot."
+            echo "Run 'pnpm gen:api' locally and commit the result."
+            git --no-pager diff --stat -- openapi/schema.json src/shared/api/schema.d.ts
+            exit 1
+          fi
+
+      - name: ESLint
+        run: pnpm lint
+
+      - name: vue-tsc
+        run: pnpm typecheck
+
+      - name: Vitest
+        run: pnpm test -- --run
+
+      - name: Build
+        run: pnpm build
+
+      - name: Upload build artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+          if-no-files-found: error

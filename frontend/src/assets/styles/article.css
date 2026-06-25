@@ -1,0 +1,147 @@
+/**
+ * Article (markdown body) styles. `.article-prose` is the wrapping container;
+ * `.markdown-body` is the server-rendered HTML root. Heading rules stay scoped
+ * so admin/home headings keep their own visual hierarchy.
+ *
+ * Code-fence decoration is handled by useEnhanceCodeBlocks at runtime; that
+ * pass wraps `<pre>` in `.code-card` so the toolbar rules below apply.
+ */
+.article-prose {
+  color: var(--color-text);
+  font-size: 1rem;
+  line-height: 1.72;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+}
+
+.article-prose .markdown-body {
+  word-wrap: break-word;
+}
+
+.article-prose .markdown-body h1,
+.article-prose .markdown-body h2,
+.article-prose .markdown-body h3,
+.article-prose .markdown-body h4 {
+  margin: 1.8em 0 0.6em;
+  line-height: 1.25;
+}
+.article-prose .markdown-body h1 {
+  font-size: 1.7rem;
+}
+.article-prose .markdown-body h2 {
+  font-size: 1.42rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.3em;
+}
+.article-prose .markdown-body h3 {
+  font-size: 1.18rem;
+  color: var(--color-text);
+}
+.article-prose .markdown-body p {
+  margin: 0 0 1.1em;
+}
+.article-prose .markdown-body blockquote {
+  margin: 1.2em 0;
+  padding: 0.6em 1em;
+  border-left: 3px solid var(--color-accent);
+  background: rgba(0, 170, 255, 0.08);
+  color: var(--color-text-muted);
+  border-radius: 0 8px 8px 0;
+}
+.article-prose .markdown-body ul,
+.article-prose .markdown-body ol {
+  padding-left: 1.4em;
+  margin: 0 0 1.1em;
+}
+.article-prose .markdown-body li {
+  list-style: disc;
+  margin: 0.25em 0;
+}
+.article-prose .markdown-body ol li {
+  list-style: decimal;
+}
+.article-prose .markdown-body code {
+  font-family: var(--font-mono);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.article-prose .markdown-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.4em 0;
+  font-size: 0.95em;
+}
+.article-prose .markdown-body th,
+.article-prose .markdown-body td {
+  padding: 0.55em 0.85em;
+  border: 1px solid var(--color-border);
+}
+.article-prose .markdown-body th {
+  background: rgba(255, 255, 255, 0.04);
+  text-align: left;
+}
+.article-prose .markdown-body img {
+  border-radius: 12px;
+  margin: 1.4em auto;
+}
+.article-prose .markdown-body a {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Code-card chrome injected by useEnhanceCodeBlocks. */
+.article-prose .code-card {
+  position: relative;
+  margin: 1.4em 0;
+  background: #0a0f24;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.article-prose .code-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.45rem 0.8rem;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+}
+.article-prose .code-dots {
+  display: flex;
+  gap: 0.35rem;
+}
+.article-prose .code-dots span {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  display: inline-block;
+}
+.article-prose .code-lang {
+  flex: 1;
+  letter-spacing: 0.08em;
+}
+.article-prose .code-copy {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--color-border);
+  color: inherit;
+  border-radius: 6px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.article-prose pre[data-language] {
+  margin: 0;
+  padding: 1rem 1.1rem;
+  background: transparent;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}

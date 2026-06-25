@@ -1,0 +1,70 @@
+/**
+ * Admin panel styles. Tables and forms reuse the design tokens; the layout
+ * shell itself is styled in AdminLayout.vue.
+ */
+.admin-page {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.admin-table th,
+.admin-table td {
+  padding: 0.6rem 0.7rem;
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: middle;
+}
+.admin-table th {
+  font-weight: 500;
+  color: var(--color-text-muted);
+  background: rgba(255, 255, 255, 0.03);
+}
+.admin-table tr:hover td {
+  background: rgba(255, 255, 255, 0.03);
+}
+.admin-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.admin-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-5);
+}
+
+.admin-form {
+  display: grid;
+  gap: var(--space-4);
+}
+.admin-form__row {
+  display: grid;
+  gap: var(--space-3);
+}
+@media (min-width: 720px) {
+  .admin-form__row--split {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+.admin-form__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.publish-meta {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+.publish-meta__title {
+  font-size: 0.95rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-3);
+}

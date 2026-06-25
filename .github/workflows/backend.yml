@@ -1,0 +1,84 @@
+name: backend
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+      - '.pre-commit-config.yaml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - '.github/workflows/backend.yml'
+      - '.pre-commit-config.yaml'
+  workflow_dispatch:
+
+# Cancel superseded runs on the same ref to keep the queue short.
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: backend
+
+jobs:
+  lint-typecheck-test:
+    name: ruff + pyright + pytest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    env:
+      # uv caches: keep them under the runner workspace so actions/cache works.
+      UV_CACHE_DIR: ${{ github.workspace }}/.uv-cache
+      # Test-only secrets. The real values live in org-level secrets and are
+      # injected on deployment, never in CI.
+      JWT_SECRET: ci-only-jwt-secret-please-replace-min-32-chars
+      LG_ADMIN_USERNAME: ci-admin
+      LG_ADMIN_PASSWORD: ci-admin-pass
+      DATABASE_URL: 'sqlite+aiosqlite:///:memory:'
+      APP_ENV: ci
+      ALLOWED_ORIGINS: http://localhost:5173
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: '0.5.11'
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync dependencies (frozen)
+        run: uv sync --frozen
+
+      - name: Ruff (lint)
+        run: uv run ruff check .
+
+      - name: Ruff (format check)
+        run: uv run ruff format --check .
+
+      - name: Pyright (strict on src/app, basic on tests)
+        run: uv run pyright
+
+      - name: Alembic upgrade head (smoke)
+        run: uv run alembic upgrade head
+
+      - name: Pytest
+        run: uv run pytest -q --color=yes
+
+      - name: Upload pytest cache on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-pytest-cache
+          path: backend/.pytest_cache
+          retention-days: 3
+          if-no-files-found: ignore

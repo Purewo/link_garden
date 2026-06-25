@@ -1,0 +1,31 @@
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[lint]
+select = [
+  "E",     # pycodestyle errors
+  "F",     # pyflakes
+  "I",     # isort
+  "W",     # pycodestyle warnings
+  "UP",    # pyupgrade
+  "B",     # bugbear
+  "C4",    # comprehensions
+  "SIM",   # simplify
+  "TCH",   # type-checking
+  "RUF",   # ruff-specific
+  "ASYNC", # async checks
+]
+ignore = [
+  "E501",  # line length handled by formatter
+  "B008",  # function call in default arg (FastAPI Depends pattern)
+  "TC001", # type-checking block dance hurts readability for runtime imports
+  "TC002",
+  "TC003",
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["B011", "S101"]
+
+[lint.isort]
+known-first-party = ["app"]

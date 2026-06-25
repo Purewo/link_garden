@@ -1,229 +1,214 @@
 # Link Garden / 净界
 
-一个前后端分离的个人内容站项目。
+A personal content garden. Two content types share one storefront:
 
-目标不是做传统博客模板，而是做一个更像“个人内容花园 / 技术收藏站 / 个人博客门面”的网站：
+- **External** cards bookmark off-site work. Click jumps to the source URL; nothing is stored locally.
+- **Local** cards are Markdown authored in-site. Rendered, sanitized, and served from the same backend.
 
-- 外部文章：卡片点击直接跳原链接
-- 本地文章：用 Markdown 存储并在站内展示
-- 前台重视门面、卡片感和阅读体验
-- 后台重视创作体验，而不是纯后台表单感
+The site is a single-admin blog, not a multi-tenant platform. Stack and decisions are tuned for that shape.
 
 ---
 
-## 当前技术栈
+## Stack
 
-### 后端
-- Python 3.12
-- Flask
-- 数据存储：`JSON + Markdown`
+### Backend (`backend/`)
 
-### 前端
-- Vue 3
-- Vite
-- `md-editor-v3`（用于新增文章页编辑器）
-- `highlight.js`（详情页代码高亮）
+- Python 3.12, FastAPI 0.118, async everywhere
+- SQLAlchemy 2.0 (async) + Alembic 1.14, SQLite (aiosqlite) in dev, PostgreSQL (asyncpg) one DSN away in prod
+- Pydantic 2.11 + pydantic-settings for typed schemas and `.env` loading
+- PyJWT 2.10 (HS256, pinned), bcrypt 4.x for auth
+- markdown-it-py + mdit-py-plugins + linkify-it-py for rendering, nh3 for sanitization
+- Pillow 11+ for cover validation, structlog for JSON logs
+- Served by gunicorn 23 + uvicorn workers behind nginx
+- Managed by **uv** (lockfile committed, `uv sync --frozen` on every checkout)
 
----
+### Frontend (`frontend/`)
 
-## 目录结构
+- Vue 3.5 (`<script setup>`), TypeScript 5.7 strict, Vite 7
+- Pinia 3 setup stores + `pinia-plugin-persistedstate`, vue-router 4
+- API client generated from FastAPI's `/openapi.json` via `openapi-typescript` + `openapi-fetch` (no axios)
+- `md-editor-v3` for authoring, `highlight.js` for read-side code blocks
+- ESLint 9 flat config + Prettier 3, Vitest 3 for tests
+- Managed by **pnpm** (lockfile committed, Node 20.19+/22 LTS)
 
-```text
-link-garden/
-├── backend/
-│   ├── app.py
-│   ├── requirements.txt
-│   ├── data/
-│   │   └── cards.json
-│   └── content/
-│       └── notes/
-├── frontend/
-│   ├── public/
-│   ├── src/
-│   ├── package.json
-│   └── vite.config.js
-└── .venv/
+### Repo layout
+
+```
+LinkGarden/
+├── backend/                 FastAPI app (src layout, uv-managed)
+├── frontend/                Vue 3 SPA (pnpm-managed)
+├── deploy/                  systemd unit, nginx config, env template
+├── scripts/                 deploy.sh, codegen wrapper
+├── docs/
+│   ├── refactor/            ADRs, briefs, migration runbook
+│   └── architecture/        spec + diagrams
+├── data/                    FROZEN legacy snapshot (chmod a-w after migration)
+├── content/notes/           FROZEN legacy snapshot
+├── README.md                this file
+└── CLAUDE.md                handoff notes for the AI partner
 ```
 
----
-
-## 内容模型
-
-### 1. 外部文章 `external`
-用于收藏外部网页、文章、项目。
-
-特点：
-- 存在 `cards.json`
-- 点击卡片直接跳转到原始链接
-- 不在站内存正文
-
-### 2. 本地文章 `local`
-用于自己写的技术文、随笔、整理后的内容。
-
-特点：
-- 元信息存在 `cards.json`
-- 正文存为 Markdown 文件
-- 详情页在站内渲染
+The repo is a logical monorepo, not a pnpm workspace — backend and frontend have independent toolchains and CI matrices.
 
 ---
 
-## 已完成功能
+## Dev loop
 
-### 前台
-- 首页 Hero 大海报
-- 顶部透明导航
-- 左侧个人信息卡 + 搜索
-- 三大分类卡入口（技术类 / 随笔类 / 生活类）
-- 首页文章卡片流
-- 本地文章详情页
-- 详情页独立文章头图（使用文章自己的海报，而不是首页海报）
-- 详情页正文排版增强
-- 详情页代码块高亮与代码卡片样式
-- 表格样式优化
-- 真实头像已接入：
-  - 顶部导航右侧
-  - 首页左侧信息卡
+### Prerequisites
 
-### 后台
-- 后台文章管理页
-- 后台新增文章页
-- `md-editor-v3` 编辑器接入
-- 本地文章发布
-- 外部文章发布接口已打通（UI 低调保留）
-- 后台列表读取真实接口，不再使用写死假数据
+- Python 3.12 with [uv](https://github.com/astral-sh/uv) installed (`pipx install uv` or the project recommends `uv tool install`).
+- Node 20.19+ or 22 LTS with [pnpm](https://pnpm.io/) 9.
+- For sanitizer audits and cover validation, no system libs beyond Pillow's own wheels are required.
 
-### 后端
-- `GET /api/cards`
-- `GET /api/cards/<id>`
-- `GET /api/tags`
-- `POST /api/publish`
-- 本地 Markdown 正文读取
-- 发布时写入 `cards.json` 与本地 Markdown 文件
-
----
-
-## 运行方式
-
-### 后端
-项目后端已配置为 `systemd` 持久服务：
-
-- service: `link-garden-backend.service`
-- 端口：`5001`
-
-常用命令：
+### Bootstrap the backend
 
 ```bash
-systemctl status link-garden-backend.service
-systemctl restart link-garden-backend.service
-journalctl -u link-garden-backend.service -n 100 --no-pager
+cd backend
+cp .env.example .env                  # then fill JWT_SECRET, LG_ADMIN_PASSWORD
+uv sync                               # creates .venv from uv.lock
+uv run alembic upgrade head           # creates tables + seeds admin from .env
+uv run uvicorn app.asgi:app --host 127.0.0.1 --port 5001 --reload
 ```
 
-### 前端
-项目前端已配置为 `systemd` 持久服务：
+The backend listens on `127.0.0.1:5001`. `GET /api/health` and `GET /api/v1/health` should both return `{"ok": true}`.
 
-- service: `link-garden-frontend.service`
-- 端口：`5173`
-
-常用命令：
+### Bootstrap the frontend
 
 ```bash
-systemctl status link-garden-frontend.service
-systemctl restart link-garden-frontend.service
-journalctl -u link-garden-frontend.service -n 100 --no-pager
+cd frontend
+pnpm install --frozen-lockfile
+pnpm gen:api                          # regenerate types from the running backend
+pnpm dev                              # http://localhost:5173, proxies /api to :5001
 ```
 
-### 局域网访问
-当前开发机局域网 IP：
+`pnpm gen:api` tries the running backend at `127.0.0.1:5001` first and falls back to the committed snapshot under `frontend/openapi/schema.json`.
 
-```text
-http://192.168.181.134:5173/
+### Useful commands
+
+| Command (in `backend/`) | What it does |
+|---|---|
+| `uv run pytest` | full backend test suite |
+| `uv run ruff check . && uv run ruff format .` | lint + format |
+| `uv run pyright` | strict types on `src/app`, basic on tests |
+| `uv run alembic revision --autogenerate -m "msg"` | new migration |
+| `uv run python -m scripts.seed_admin` | rotate the admin password interactively |
+| `uv run python -m scripts.migrate_from_json --json-file ../data/cards.json --notes-dir ../content/notes --owner-username admin` | one-shot legacy import |
+
+| Command (in `frontend/`) | What it does |
+|---|---|
+| `pnpm dev` | Vite dev server with `/api` proxy |
+| `pnpm build` | production build to `frontend/dist/` |
+| `pnpm test` | Vitest in watch mode (`-- --run` for one-shot) |
+| `pnpm typecheck` | `vue-tsc --noEmit` |
+| `pnpm lint` | ESLint flat config (max-warnings 0) |
+| `pnpm gen:api` | regenerate `schema.json` + `schema.d.ts` from backend |
+
+---
+
+## API contract (overview)
+
+Everything routable lives under `/api/v1`. `GET /api/health` is mounted directly on the app so external monitors stay version-stable. Failures use the envelope `{"ok": false, "error": <human>, "code": <machine>}`; successes are the bare resource. The machine code list is frozen and never localized. Full details: [`docs/architecture/`](docs/architecture/) and the spec in [`docs/refactor/phase2-architecture.md`](docs/refactor/phase2-architecture.md) §3.5.
+
+```
+GET    /api/health
+GET    /api/v1/health
+POST   /api/v1/auth/login
+GET    /api/v1/auth/me                          (Bearer)
+GET    /api/v1/cards
+GET    /api/v1/cards/{slug}
+POST   /api/v1/cards                            (admin)
+PUT    /api/v1/cards/{id}                       (admin)
+PATCH  /api/v1/cards/{id}/archive               (admin)
+DELETE /api/v1/cards/{id}                       (admin)
+GET    /api/v1/tags
+POST   /api/v1/covers                           (admin)
+ANY    /api/{path}        (legacy 308 shim, one release)
 ```
 
----
-
-## 当前重要设计结论
-
-这些是已经明确拍板过、下次不要再反复讨论的点：
-
-1. **项目风格**
-   - 借鉴 Aurora / 个人博客前端气质
-   - 但不复用其重后端架构
-   - 整体偏深色、冷调、克制、带一点赛博感
-
-2. **文章分两类**
-   - `external`：外部文章，卡片直接跳转外链
-   - `local`：本地文章，Markdown 存储，站内阅读
-
-3. **后台新增文章页设计思路**
-   - 标题在最上面
-   - 主体优先是正文编辑器
-   - 其他配置放后面，不要抢正文工作区
-   - 不再重复手搓右侧预览，而是优先使用编辑器自身预览能力
-
-4. **详情页头图**
-   - 不使用首页总海报
-   - 使用文章自己的封面图
-   - 高度要克制，不能过高影响阅读
-
-5. **首页策略**
-   - 首页只放三个大类入口卡
-   - 当前不做额外复杂导航逻辑
+Legacy `/api/*` (non-`v1`) paths return `308 Permanent Redirect` to the v1 equivalent for one release after cutover, then disappear. Each hit is logged at WARN so operators can verify zero traffic before removal.
 
 ---
 
-## 已明确否掉 / 暂不做的东西
+## Identity model
 
-以下是已经讨论过并明确不作为当前方向推进的内容，避免下次又绕回去：
-
-- 首页“单卡片状态特殊优化”
-  - 例如：只有 1 篇文章时自动居中或放大展示
-  - 当前先不做
-
-- 首页“2、3、4 篇文章的特殊排布策略”
-  - 当前先不做这类复杂特判
-
-- 后台新增文章页中间复杂工具栏自定义
-  - 当前先依赖 `md-editor-v3` 自带能力
-
-- 详情页右侧目录浮卡
-  - 已删除，不需要
+- `cards.id` is an immutable `uuid4` primary key. Mutating endpoints address cards by `id`.
+- `cards.slug` is a regenerable URL handle, unique only among non-archived rows via a partial unique index. Read endpoints address cards by `slug`.
+- Legacy `cards.json` ids become the initial `slug` values verbatim so existing public URLs keep resolving.
 
 ---
 
-## 当前已知问题 / 下次继续时优先检查
+## Auth
 
-1. 前端和后端都已经切到 `systemd` 管理，但修改代码后如果页面表现不一致，先检查：
-   - 前端是否热更新成功
-   - 后端是否因代码错误退出
-
-2. 详情页代码高亮逻辑已经接入，但后续仍建议继续观察：
-   - 不同语言代码块识别
-   - 复制按钮文案与交互
-   - 代码卡片顶部语言名是否准确
-
-3. 新增文章页目前已经能发布，但交互还可继续优化：
-   - 外部文章填写体验
-   - 发布成功后的反馈
-   - 编辑 / 删除链路
+JWT HS256, secret loaded from `JWT_SECRET`, 12-hour TTL, decoder pinned to `algorithms=["HS256"]`. Bearer token in the `Authorization` header. No refresh tokens in v1; on `401`, the SPA clears the persisted token and (only when the route requires admin) redirects to `/admin/login?next=...`. The admin row is seeded by Alembic data migration `0002_seed_admin` when no users exist, reading `LG_ADMIN_USERNAME` and `LG_ADMIN_PASSWORD` from the environment.
 
 ---
 
-## 建议的下一步（当前推荐）
+## Markdown pipeline
 
-如果下次继续开发，建议优先级如下：
+Markdown is rendered **server-side** on every write and persisted to `cards.body_html`:
 
-1. 后台文章 **编辑 / 删除**
-2. 新增文章页体验继续打磨
-3. 首页卡片细节与分类切换细节
-4. 外部文章自动抓取信息（标题 / 摘要 / 封面）
+1. Strip a leading `# H1` line (the title is owned by the card row).
+2. Parse with markdown-it-py (GFM-like, `html: false`, linkify, footnotes, tables, task-lists).
+3. Annotate code fences with `data-language="<lang>"` for client highlighting.
+4. Render to HTML.
+5. Sanitize through nh3 with an explicit tag/attribute allowlist; `a` gets `rel="noopener noreferrer nofollow"`.
+
+Reads serve the cached HTML directly. The client trusts it via `v-html`; no DOMPurify on the client. When the allowlist changes, an Alembic data migration re-renders every local card.
 
 ---
 
-## 备注
+## Cover uploads
 
-这个项目已经从“页面原型”进入“真能发内容”的阶段。
-下次继续时，优先保持：
+`POST /api/v1/covers` is multipart, admin-only, accepts `image/png|jpeg|webp` only, max 5 MiB, max 4096×4096 px. Content-Type is verified by magic-byte sniff and `Pillow.verify()` re-open. Writes are atomic (`.tmp` + `os.replace`) into `<STATIC_DIR>/covers/<card_id>.<ext>`; siblings with other extensions for the same `card_id` are unlinked. The endpoint updates `cards.cover` in the same transaction and returns the refreshed `CardRead`. In prod, nginx `alias /covers/` serves the directory directly.
 
-- 先保证页面不崩
-- 再保证接口链路通
-- 最后才是视觉打磨
+---
+
+## Deployment
+
+Single Ubuntu host, single `linkgarden.service` systemd unit running `gunicorn -k uvicorn.workers.UvicornWorker -w 2`. `alembic upgrade head` runs as `ExecStartPre`; failure aborts the unit start so the previous binary keeps running. nginx terminates TLS, serves the SPA from `dist/`, proxies `/api/` to `127.0.0.1:5001`, and `alias`-serves `/covers/`. Full canonical configs live in `deploy/` and the runbook in [`docs/refactor/deploy-runbook.md`](docs/refactor/deploy-runbook.md).
+
+SQLite runs in WAL mode with `foreign_keys=ON` and `busy_timeout=5000`, set by a SQLAlchemy connect listener. Postgres swap is a one-line `DATABASE_URL` change.
+
+---
+
+## CI
+
+Three workflows in `.github/workflows/`:
+
+- **`backend.yml`** — `uv sync --frozen`, `ruff check`, `ruff format --check`, `pyright`, `alembic upgrade head`, `pytest`.
+- **`frontend.yml`** — `pnpm install --frozen-lockfile`, `pnpm gen:api` then `git diff --exit-code` for codegen drift, `eslint`, `vue-tsc`, `vitest --run`, `pnpm build`.
+- **`contract.yml`** — boots the FastAPI app, exports `/openapi.json`, diffs against the committed `frontend/openapi/schema.json` and regenerates `schema.d.ts` to confirm no drift.
+
+Runtime secrets (`JWT_SECRET`, `LG_ADMIN_PASSWORD`, etc.) are **not** in CI. The workflows use throwaway values; production secrets live in the deploy host's `/etc/linkgarden/linkgarden.env`.
+
+---
+
+## Pre-commit hooks
+
+```bash
+pip install pre-commit              # or `uv tool install pre-commit`
+pre-commit install
+pre-commit run --all-files
+```
+
+Hooks: trailing whitespace, EOF, merge conflicts, large files, YAML/TOML/JSON syntax, private-key + gitleaks secret scanning, ruff (lint + format) on backend, ESLint + Prettier on frontend, and a guard that refuses hand-edits to the generated `schema.d.ts`. Heavy checks (`pyright`, `vue-tsc`) are gated to the `manual` stage; they run in CI on every push.
+
+---
+
+## Legacy data
+
+`data/cards.json` and `content/notes/*.md` are the pre-refactor snapshot. The new backend never writes to either tree; after migration, the deploy script runs `chmod -R a-w` on both. The one-shot importer is `backend/scripts/migrate_from_json.py` — idempotent on slug, supports `--dry-run` and `--report-html` for a sanitizer audit. Rollback procedure lives in [`docs/refactor/migration-runbook.md`](docs/refactor/migration-runbook.md).
+
+---
+
+## Diagrams
+
+- [`docs/architecture/diagrams/system-context.md`](docs/architecture/diagrams/system-context.md) — request flow from browser → nginx → FastAPI → SQLite.
+- [`docs/architecture/diagrams/backend-modules.md`](docs/architecture/diagrams/backend-modules.md) — feature-modular tree with router → service → repository discipline.
+- [`docs/architecture/diagrams/frontend-modules.md`](docs/architecture/diagrams/frontend-modules.md) — feature folders, shared kit, Pinia stores.
+
+---
+
+## License & ownership
+
+Single-admin personal project. No third-party authors; no contributor agreement. See `PROJECT_NOTES.md` for the long-running design log.

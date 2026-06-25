@@ -1,0 +1,64 @@
+/**
+ * Design tokens. Colour + spacing primitives used by layouts, primitives, and
+ * feature CSS. Theme switching flips a top-level data-theme attribute (the UI
+ * store toggles it via the global class); the default is dark.
+ */
+:root {
+  color-scheme: dark;
+
+  --color-bg: #060a16;
+  --color-bg-elev: #0c1226;
+  --color-surface: #111933;
+  --color-surface-2: #161e3d;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+
+  --color-text: #d8e1ff;
+  --color-text-muted: #8d99c1;
+  --color-text-dim: #5b6692;
+
+  --color-accent: #00aaff;
+  --color-accent-soft: rgba(0, 170, 255, 0.16);
+  --color-success: #4adf9c;
+  --color-warning: #ffc36a;
+  --color-error: #ff6285;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+
+  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.18);
+  --shadow-md: 0 12px 28px rgba(0, 0, 0, 0.28);
+  --shadow-lg: 0 22px 48px rgba(0, 0, 0, 0.4);
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+
+  --font-sans:
+    'Inter', 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono:
+    'JetBrains Mono', ui-monospace, SFMono-Regular, Consolas, 'Liberation Mono', monospace;
+
+  --content-max-width: 1180px;
+}
+
+[data-theme='light'] {
+  color-scheme: light;
+  --color-bg: #f4f6fb;
+  --color-bg-elev: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-2: #eef1f8;
+  --color-border: rgba(15, 23, 42, 0.08);
+  --color-border-strong: rgba(15, 23, 42, 0.18);
+  --color-text: #0c1226;
+  --color-text-muted: #475374;
+  --color-text-dim: #6b7491;
+  --color-accent: #0a7fc8;
+  --color-accent-soft: rgba(10, 127, 200, 0.16);
+}

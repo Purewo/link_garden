@@ -1,0 +1,139 @@
+name: contract
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'backend/**'
+      - 'frontend/openapi/**'
+      - 'frontend/scripts/gen-api.ts'
+      - 'frontend/src/shared/api/schema.d.ts'
+      - '.github/workflows/contract.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'frontend/openapi/**'
+      - 'frontend/scripts/gen-api.ts'
+      - 'frontend/src/shared/api/schema.d.ts'
+      - '.github/workflows/contract.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  openapi-drift:
+    name: backend openapi.json vs frontend snapshot
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    env:
+      UV_CACHE_DIR: ${{ github.workspace }}/.uv-cache
+      JWT_SECRET: ci-only-jwt-secret-please-replace-min-32-chars
+      LG_ADMIN_USERNAME: ci-admin
+      LG_ADMIN_PASSWORD: ci-admin-pass
+      DATABASE_URL: 'sqlite+aiosqlite:///:memory:'
+      APP_ENV: ci
+      ALLOWED_ORIGINS: http://localhost:5173
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # --- backend setup ---
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: '0.5.11'
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+        working-directory: backend
+
+      - name: Sync backend dependencies (frozen)
+        run: uv sync --frozen
+        working-directory: backend
+
+      # --- export the live OpenAPI document ---
+      - name: Export /openapi.json from FastAPI app
+        working-directory: backend
+        run: |
+          uv run python - <<'PY'
+          import json
+          from pathlib import Path
+          from app.main import create_app
+
+          app = create_app()
+          schema = app.openapi()
+          out = Path("openapi-live.json")
+          out.write_text(
+              json.dumps(schema, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+          print(f"wrote {out} ({out.stat().st_size} bytes)")
+          PY
+
+      # --- frontend setup ---
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: '9'
+          run_install: false
+
+      - name: Resolve pnpm store dir
+        id: pnpm-store
+        run: echo "dir=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.dir }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('frontend/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install frontend dependencies (frozen)
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      # --- compare ---
+      - name: Diff live OpenAPI against committed snapshot
+        run: |
+          set -euo pipefail
+          live=backend/openapi-live.json
+          snap=frontend/openapi/schema.json
+          if [ ! -f "$snap" ]; then
+            echo "::error::frontend/openapi/schema.json is missing. Run 'pnpm gen:api' against the backend and commit the result."
+            exit 1
+          fi
+          # Normalize both sides through jq with sorted keys so whitespace and
+          # ordering noise can't trip the diff.
+          jq --sort-keys . "$live" > live.norm.json
+          jq --sort-keys . "$snap" > snap.norm.json
+          if ! diff -u snap.norm.json live.norm.json; then
+            echo "::error::OpenAPI contract drift: backend's /openapi.json no longer matches frontend/openapi/schema.json."
+            echo "Run 'pnpm gen:api' locally against the backend, commit the regenerated schema.json + schema.d.ts."
+            exit 1
+          fi
+          echo "OpenAPI contract is in sync."
+
+      - name: Regenerate frontend types from live schema and verify no drift
+        working-directory: frontend
+        run: |
+          # Use the live document to regenerate types and confirm the committed
+          # schema.d.ts matches what the live contract would produce.
+          cp ../backend/openapi-live.json openapi/schema.json
+          pnpm exec openapi-typescript openapi/schema.json -o src/shared/api/schema.d.ts
+          if ! git diff --quiet -- src/shared/api/schema.d.ts; then
+            echo "::error::Frontend schema.d.ts is stale relative to the live backend OpenAPI."
+            git --no-pager diff -- src/shared/api/schema.d.ts | head -200
+            exit 1
+          fi

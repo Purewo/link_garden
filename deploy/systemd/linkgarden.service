@@ -1,0 +1,90 @@
+# LinkGarden API systemd unit.
+#
+# Install:
+#   sudo install -m 0644 deploy/systemd/linkgarden.service /etc/systemd/system/linkgarden.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now linkgarden.service
+#
+# Layout this unit assumes (see docs/refactor/deploy-runbook.md for full host bring-up):
+#   /srv/linkgarden/backend/             # git checkout (working dir)
+#   /srv/linkgarden/backend/src/app/static/covers/   # uploaded covers (RW)
+#   /srv/linkgarden/backend/linkgarden.db            # SQLite WAL DB (RW)
+#   /srv/linkgarden/venv/                # uv-managed venv (gunicorn + alembic + app)
+#   /srv/linkgarden/var/                 # runtime artifacts, lock files (RW)
+#   /etc/linkgarden/linkgarden.env       # secrets, chmod 600, owner linkgarden
+#
+# `Type=notify` is intentional: gunicorn 23+ emits sd_notify READY=1 once workers
+# are up, so dependent units (e.g. health-watch timers) don't start before the
+# listener is actually serving. ExecStartPre runs migrations every boot; if it
+# fails, systemd reports `failed` and the previous binary keeps running because
+# the deploy script flips frontend/dist only after a successful smoke check.
+
+[Unit]
+Description=LinkGarden API (FastAPI + gunicorn UvicornWorker)
+Documentation=https://github.com/your-org/linkgarden
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=linkgarden
+Group=linkgarden
+WorkingDirectory=/srv/linkgarden/backend
+EnvironmentFile=/etc/linkgarden/linkgarden.env
+
+# Run schema migrations on every start. Failure here aborts the unit start so a
+# bad revision never replaces the running binary.
+ExecStartPre=/srv/linkgarden/venv/bin/alembic -c alembic.ini upgrade head
+
+# 2 workers is the documented starting point: UvicornWorker is async and SQLite
+# serializes writes anyway. Bump to 4 only if read concurrency becomes the
+# bottleneck — never above 4 on single-host SQLite.
+ExecStart=/srv/linkgarden/venv/bin/gunicorn app.asgi:app \
+    -k uvicorn.workers.UvicornWorker -w 2 \
+    --bind 127.0.0.1:5001 \
+    --timeout 60 --graceful-timeout 30 \
+    --proxy-headers --forwarded-allow-ips=127.0.0.1 \
+    --access-logfile - --error-logfile -
+
+# Graceful reload on SIGHUP — gunicorn re-execs workers without dropping the
+# listener. Use `systemctl reload linkgarden` for code-only changes that don't
+# need a fresh migration.
+ExecReload=/bin/kill -HUP $MAINPID
+
+Restart=on-failure
+RestartSec=2
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+# --- Sandbox / hardening ---------------------------------------------------
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+
+# Only these paths are writable. Cover uploads, the SQLite DB + WAL/SHM
+# sidecars, and the runtime var dir. Everything else under /srv/linkgarden is
+# read-only at runtime (deploys are out-of-band).
+ReadWritePaths=/srv/linkgarden/backend/src/app/static/covers
+ReadWritePaths=/srv/linkgarden/backend/linkgarden.db
+ReadWritePaths=/srv/linkgarden/backend/linkgarden.db-wal
+ReadWritePaths=/srv/linkgarden/backend/linkgarden.db-shm
+ReadWritePaths=/srv/linkgarden/var
+
+# Stdout/stderr go to journald with this identifier so `journalctl -u linkgarden`
+# is the one stop for app logs (structlog already emits JSON in prod).
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=linkgarden
+
+[Install]
+WantedBy=multi-user.target

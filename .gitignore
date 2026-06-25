@@ -18,6 +18,12 @@ dist/
 # Logs
 *.log
 
+# Test/coverage artifacts
+.coverage
+.pytest_cache/
+htmlcov/
+.ruff_cache/
+
 # Env files
 .env
 .env.*

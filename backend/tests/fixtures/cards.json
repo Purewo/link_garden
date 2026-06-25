@@ -1,0 +1,55 @@
+[
+  {
+    "id": "first-local-article",
+    "title": "First local article",
+    "category": "local",
+    "summary": "A local markdown card used by the migration test happy path.",
+    "tags": ["alpha", "beta", "Alpha"],
+    "cover": "/covers/first-local-article.png",
+    "created_at": "2026-01-15",
+    "archived": false,
+    "markdown": "notes/first-local-article.md",
+    "group": "技术类"
+  },
+  {
+    "id": "second-external-link",
+    "title": "Second external link",
+    "category": "external",
+    "summary": "An external jump card.",
+    "tags": ["link"],
+    "cover": "/covers/second-external-link.png",
+    "created_at": "2026-02-01",
+    "archived": false,
+    "url": "https://example.com/second"
+  },
+  {
+    "id": "third-archived-local",
+    "title": "Third archived local",
+    "category": "local",
+    "summary": "Archived row to verify the archived bit carries over.",
+    "tags": ["archive", "old"],
+    "cover": null,
+    "created_at": "2025-12-01",
+    "archived": true,
+    "markdown": "notes/third-archived-local.md"
+  },
+  {
+    "id": "fourth-missing-md",
+    "title": "Fourth card with missing markdown file",
+    "category": "local",
+    "summary": "The migration should refuse this row and log the missing file.",
+    "tags": [],
+    "cover": null,
+    "created_at": "2026-03-10",
+    "archived": false,
+    "markdown": "notes/fourth-missing-md.md"
+  },
+  {
+    "id": "fifth-no-created-at",
+    "title": "Fifth card without created_at",
+    "category": "external",
+    "summary": "Triggers the created_at fallback path.",
+    "tags": ["fallback"],
+    "url": "https://example.com/fifth"
+  }
+]
